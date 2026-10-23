@@ -7,7 +7,7 @@
 >
 > **define-err dependency:** report-err names define-err's types from 0.4 on (`PLAN.md` section 3.4). The 0.2 design lock follows define-err's own 0.2 design lock; 0.4 waits for a published define-err with the interface locked. When a phase is blocked, record the blocker here and continue with the unblocked items.
 
-## v0.1.0 - Scaffold
+## v0.1.0 - Scaffold (DONE, 2026-10-23)
 Exit: CI green on every job; the crate published to claim the name.
 - [x] Repository `jamesgober/report-err` created and cloned to `error-collection/report-err` (name decided by James, D-001).
 - [x] Manifest (edition 2021, MSRV 1.81, features `std` (default) and `testing`, no dependencies), README, CHANGELOG, REPS, dual license, `deny.toml`, `clippy.toml`, `rustfmt.toml`, `.editorconfig`, `.gitattributes`.
@@ -17,14 +17,14 @@ Exit: CI green on every job; the crate published to claim the name.
 
 ## v0.2.0 - Design lock
 Exit: James approves `docs/API.md`; the define-err interface (X-1 to X-12) is locked.
-Requires: define-err's own 0.2 design lock (its API approved), so the names report-err uses from it are final.
-- [ ] `docs/API.md` for every item in `PLAN.md` section 8 (signatures, behaviour, errors, costs, examples), each marked with the version it arrives in.
-- [ ] `docs/UNSAFE.md` first version: layout and invariants I-1 to I-12.
-- [ ] The chain view (`PLAN.md` 7.6.1, D-003) prototyped with the real `raw` layout, Miri-clean under both aliasing models, its cost measured and recorded; James gets the numbers and options first if one-word size or an allocation count would have to change.
-- [ ] The define-err interface X-1 to X-12 agreed with define-err's plan and recorded in both plans; the four requests (X-1 niche, X-7 builders, X-8 `report_record`, X-9 creation-hook slot) answered, each with its fallback where declined.
+Requires: define-err's own 0.2 design lock (its API approved), so the names report-err uses from it are final. **Blocked on this, 2026-10-23**: define-err's `docs/API.md` is written and waiting for James.
+- [x] `docs/API.md` drafted for every item in `PLAN.md` section 8 (signatures, behaviour, errors, costs, examples), each marked with the version it arrives in (2026-10-23; ERR-19 added for `Deref`, D-014). Final after define-err's API is approved.
+- [x] `docs/UNSAFE.md` first version: layout, invariants I-1 to I-13, the chain view, Miri commands (2026-10-23).
+- [x] The chain view (`PLAN.md` 7.6.1, D-003) prototyped, Miri-clean under both aliasing models with strict provenance, its cost measured and recorded (D-009): one word and every allocation count unchanged, so nothing to escalate.
+- [ ] The define-err interface X-1 to X-12 agreed with define-err's plan and recorded in both plans. All four requests (X-1 niche, X-7 builders, X-8 `report_record`, X-9 creation-hook slot) are accepted in define-err's draft 0.2 API (D-012); this item closes when James approves define-err's `docs/API.md`.
 - [ ] Every open decision in `PLAN.md` section 17 answered by James or accepted as recommended, recorded in the decision log; RD-3 (one word) and RD-18 (macro name) settled.
 - [ ] The simplicity review: every Tier 1 use in `PLAN.md` 8.2 is one or two lines.
-- [ ] One new defence idea recorded in `PLAN.md` section 19.
+- [x] One new defence idea recorded in `PLAN.md` section 19 (public text never falls back to `Display`, D-015).
 
 ## v0.3.0 - Core: anyhow parity
 API: ROOT-02, ROOT-03, ERR-01 to ERR-10, ERR-17, CTX-01, CTX-02, MAC-01 to MAC-03, CHN-01, CHN-02, MAIN-01, STD-01 to STD-03; `Deref`, `DerefMut`, and `AsRef` to `dyn Error` (D-003).

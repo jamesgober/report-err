@@ -11,6 +11,23 @@
 
 ## [Unreleased]
 
+### Added
+
+- `docs/API.md`: the public API of 1.0 (items ROOT, ERR, CTX, MAC, CHN, ATT,
+  GRP, SUP, TRC, CFG, MAIN, BND, HOOK, STD, TST) with signatures, behaviour,
+  costs, examples, and the version each item arrives in. New item ERR-19:
+  `Error` dereferences to `dyn Error` with a `source()` chain through every
+  context layer.
+- `docs/UNSAFE.md`: the layout, invariants I-1 to I-13 with the test for
+  each, the `source()` chain view, and how Miri runs.
+
+### Changed
+
+- `dev/PLAN.md`: the `source()` chain view measured on a prototype (size and
+  allocation counts unchanged; Miri-clean under Stacked Borrows and Tree
+  Borrows), define-err's answers to the four interface requests, decisions
+  D-009 to D-015, a new defence idea.
+
 ---
 
 ## [0.1.0] - 2026-10-23
