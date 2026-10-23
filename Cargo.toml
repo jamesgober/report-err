@@ -1,0 +1,89 @@
+# =============================================================================
+#  R E P S   ·   report-err
+# =============================================================================
+[package]
+name    = "report-err"
+version = "0.1.0"
+
+# Minimum Supported Rust Version (MSRV)
+# 1.81: `core::error::Error` is stable in `core` from 1.81, which the `no_std`
+# build needs; the same MSRV as define-err, the library this one builds on.
+# See dev/PLAN.md, D-005.
+rust-version = "1.81"
+edition = "2021"
+
+# License
+license = "Apache-2.0 OR MIT"
+
+# Readme
+readme = "README.md"
+
+# Description
+description = "Dynamic errors for Rust applications: one error type for any error, with context, a propagation trace, typed attachments, several causes, error codes, exit codes, and a panic boundary. One machine word; the anyhow API you already know."
+
+# Keywords (5 max)
+keywords = ["error", "error-handling", "anyhow", "context", "no-std"]
+
+# Categories
+categories = ["rust-patterns", "no-std", "development-tools::debugging"]
+
+# Links
+homepage      = "https://github.com/jamesgober/report-err"
+repository    = "https://github.com/jamesgober/report-err"
+documentation = "https://docs.rs/report-err"
+
+# Authors
+authors = ["James Gober <me@jamesgober.com>"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lib]
+name = "report_err"
+path = "src/lib.rs"
+
+
+# FEATURE FLAGS
+# #################################
+[features]
+default = ["std"]
+
+# Everything that needs the operating system: backtraces, the panic
+# boundary, `ExitReport` and exit codes, panic isolation in the creation
+# hook and in guarded rendering, the standard-error fallback of
+# `unraisable`. Without it the crate is `no_std` with `alloc`.
+std = []
+
+# Assertions for tests: a fault's chain, code, and sections.
+testing = []
+
+
+# DEPENDENCIES
+# #################################
+[dependencies]
+# None yet. define-err (codes, severity, categories, kinds, the reporting
+# facade) is added by published version, never `path`, in 0.4.0, the first
+# version that needs it (dev/PLAN.md section 3.2).
+
+
+# DEV DEPENDENCIES
+# #################################
+[dev-dependencies]
+
+
+# LINTS
+# #################################
+[lints.rust]
+# `cfg(loom)` selects the loom models (dev/PLAN.md section 12.9).
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
+
+
+# RELEASE PROFILE
+# #################################
+[profile.release]
+opt-level     = 3
+lto           = "fat"
+codegen-units = 1
+panic         = "abort"
+strip         = "symbols"
