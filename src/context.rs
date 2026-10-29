@@ -151,8 +151,23 @@ mod tests {
     fn test_context_on_ok_and_some_never_calls_closure() {
         let calls = Cell::new(0);
         let ok: Result<u8, Leaf> = Ok(1);
-        assert_eq!(ok.with_context(|| { calls.set(calls.get() + 1); "x" }).ok(), Some(1));
-        assert_eq!(Some(2).with_context(|| { calls.set(calls.get() + 1); "x" }).ok(), Some(2));
+        assert_eq!(
+            ok.with_context(|| {
+                calls.set(calls.get() + 1);
+                "x"
+            })
+            .ok(),
+            Some(1)
+        );
+        assert_eq!(
+            Some(2)
+                .with_context(|| {
+                    calls.set(calls.get() + 1);
+                    "x"
+                })
+                .ok(),
+            Some(2)
+        );
         assert_eq!(calls.get(), 0);
     }
 

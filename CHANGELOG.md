@@ -13,6 +13,61 @@
 
 ---
 
+## [0.3.0] - 2026-10-29
+
+The anyhow surface.
+
+### Added
+
+- `Error`: one type for any error, one machine word (`Result<(), Error>` is
+  8 bytes on 64-bit targets), `Send + Sync + Unpin + UnwindSafe +
+  RefUnwindSafe + 'static`. `Error::new`, `Error::msg`, `From<E>` for every
+  `E: Error + Send + Sync + 'static` (what `?` calls), each recording the
+  caller's location (`location()`).
+- `Error::context`: the first layer costs no allocation, layers two to five
+  share one block, a `&'static str` is stored as is and a `String` is moved
+  in. At 64 layers the oldest middle layer is dropped and counted.
+- `Deref`, `DerefMut`, `AsRef<dyn Error + Send + Sync>`, and
+  `AsRef<dyn Error>` for `Error`: the outermost layer, whose `source()`
+  chain walks every context layer, the root, and the root's own sources.
+- `downcast_ref`, `downcast_mut`, `downcast`, `is`: the context values
+  (newest first) and the root, as with anyhow; a message root answers to its
+  message type.
+- `chain()` (`Chain`: `ExactSizeIterator`, `FusedIterator`, `Clone`) and
+  `root_cause()`, bounded to 128 links.
+- `Context` on `Result<T, E>`, `Result<T, Error>`, and `Option<T>`:
+  `context` and `with_context`. Sealed.
+- `err!`, `format_err!`, `bail!`, `ensure!`. A literal with no arguments
+  allocates nothing beyond the error; `ensure!(cond)` says
+  `condition failed: <cond>`.
+- Formatting: `{}` the outermost message, `{:#}` the chain on one line,
+  `{:?}` anyhow's report followed by `Location:`, `{:#?}` a structural view;
+  a layer is skipped when the one before it already ends with its text. None
+  of them allocates.
+- `into_std`, `from_boxed`, and `From<Error>` for `Box<dyn Error + Send +
+  Sync>`, `Box<dyn Error + Send>`, and `Box<dyn Error>`; a box made by
+  `into_std` gives the original error back.
+- `Result<T, E = Error>` and `prelude`.
+- Tests: unit tests for every module, the edge cases of the 0.3 surface, the
+  T1 (a million context layers) and T5 (a cyclic `source()`) attack tests,
+  exact allocation counts, compile-fail cases, and a parity suite of 27
+  programs run against anyhow 1.0.104 with identical `{}`, `{:#}`, chain,
+  root cause, `source()` walk, and downcast results.
+- Benchmarks against anyhow (`benches/`, criterion), examples
+  (`quick_start`, `inspect`, `migrate_from_anyhow`), `docs/MIGRATING.md`.
+- CI: an AddressSanitizer job and a benchmark build job.
+
+### Changed
+
+- `dev/PLAN.md`: the `source()` mechanism chosen by benchmark (a direct link
+  from each layer to the next, D-011), the chain walk bounded by its budget
+  alone (D-020), measured numbers (section 11.4), decisions D-020 to D-026.
+- `docs/UNSAFE.md`: the module as built; invariant I-11 recorded from its
+  test (a payload whose `Drop` panics still frees the node).
+- `docs/API.md`: measured costs replace estimates for the 0.3 items.
+
+---
+
 ## [0.2.0] - 2026-10-29
 
 The design lock. No functional code yet.
@@ -68,6 +123,7 @@ The scaffold and the plan. No functional code yet.
   cases, open decisions, and the decision log D-001 to D-008),
   `dev/DIRECTIVES.md`, and `dev/ROADMAP.md`.
 
-[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/jamesgober/report-err/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jamesgober/report-err/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jamesgober/report-err/releases/tag/v0.1.0

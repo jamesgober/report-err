@@ -18,7 +18,7 @@
 
 The complete public API of report-err 1.0, written at the `0.2.0` design lock. Every item carries the version it arrives in (**Since**) and its item id from [`../dev/PLAN.md`](../dev/PLAN.md) section 8; the published crate exposes only what is implemented, so an item marked `0.4` does not exist in `0.3`. Signatures here are the contract: a change after `0.2.0` is recorded in the decision log of the plan. Types from define-err (`Code`, `Severity`, `Category`, `Kinds`, `ErrorInfo`, `CodeInfo`, `ErrorRecord`) are the ones its own `docs/API.md` locks.
 
-Costs are estimates (marked [est.]) until they are measured in `0.6.0`; measured numbers then replace them, labelled as measured. Numbers marked [measured] come from the design-lock prototype (PLAN 7.6.1).
+Costs are estimates (marked [est.]) until they are measured; numbers marked [measured] come from the 0.3.0 benchmarks against anyhow 1.0.104 (criterion; PLAN 11.4) or from the counting-allocator tests (`tests/alloc.rs`). The full comparison with eyre and error-stack, on Linux and aarch64 too, is in `0.6.0`.
 
 <sub>Copyright &copy; 2026 <strong>James Gober</strong>.</sub>
 
@@ -198,7 +198,7 @@ One type for any error. Since `0.3` (ERR-01).
 | Property | Value |
 |---|---|
 | Size | one machine word: `size_of::<Error>()`, `size_of::<Result<(), Error>>()`, and `size_of::<Option<Error>>()` all equal `size_of::<usize>()` (asserted at compile time) |
-| Heap | one allocation holding a header (about 80 bytes on 64-bit [est.]) and the root error inline; a second block only when a second context layer, an attachment, a section, a child, or a trace point is added |
+| Heap | one allocation holding a 72-byte header (on 64-bit targets in 0.3; it grows when codes and flags join it in 0.4 and 0.5) and the root error inline; a second block only when a second context layer, an attachment, a section, a child, or a trace point is added |
 | Traits | `Debug`, `Display`, `Deref<Target = dyn Error + Send + Sync + 'static>`, `DerefMut`, `AsRef<dyn Error + Send + Sync + 'static>`, `AsRef<dyn Error + 'static>`, `From<E>` for every `E: core::error::Error + Send + Sync + 'static`, `Send`, `Sync`, `Unpin`, `UnwindSafe`, `RefUnwindSafe` |
 | Not | `Clone` (an error is owned by one call path); `core::error::Error` itself (it could not and still convert from every error through `?`: [`Deref`](#deref-to-dyn-error-the-source-chain) gives the `&dyn Error`) |
 | `#[must_use]` | `Error` and every method that returns an `Error` or a `Result` |
@@ -250,7 +250,7 @@ impl Error {
 Adds a layer: `context` becomes the outermost message, and the error that was outermost becomes its source. Since `0.3` (ERR-05).
 
 - A `&'static str` is stored as is and a `String` is moved in; neither is copied. Any other `C` is boxed and stays downcastable as `C`.
-- The first layer lives in the error's own allocation and costs nothing; the second allocates the extension block once; layers three to five cost nothing more; later layers grow a vector [measured in the prototype: one allocation in all for 1 layer, two for 3 or 5 layers; anyhow: 2, 4, 6].
+- The first layer lives in the error's own allocation and costs nothing; the second allocates the extension block once; layers three to five cost nothing more; later layers grow a vector [measured: one allocation in all for 1 layer, two for 3 or 5 layers, three for 9; anyhow: 2, 4, 6, 10]. Create plus 3 layers took 65.6 ns, anyhow 110.5 ns; plus 9 layers 125.5 ns, anyhow 409.1 ns [measured].
 - The number of layers is bounded by [`Limits::max_frames`](#limits) (64): past it, the oldest middle layers are dropped and counted, never the innermost or the newest.
 
 ```rust
@@ -272,7 +272,7 @@ An `Error` works wherever a `&dyn Error` is expected, as anyhow's does. Since `0
 
 - The target is the outermost layer: the newest context, or the root error itself when there is no context.
 - Its `source()` is the next layer inward, and so on through every context layer to the root error, then the root error's own `source()` chain. Walking `source()` by hand visits exactly the links [`chain`](#chain-and-chain) visits, in the same order.
-- No allocation. Per link of a hand-written `source()` walk: one header read and a few address comparisons [measured in the prototype: about 1 ns per link more than anyhow for the first five layers]. `chain()` walks the error's own store directly and is faster than anyhow's `chain()` [measured: 1.4 to 2.5 times].
+- No allocation. A hand-written `source()` walk costs one load and one branch per link: 2.93 / 5.64 / 8.07 / 13.69 ns for 1 / 3 / 5 / 9 layers, anyhow 2.98 / 6.35 / 9.85 / 16.78 ns [measured]. `chain()` walks the error's own store directly and is as fast or faster (9 layers: 9.3 ns, anyhow 18.4 ns) [measured].
 
 ```rust
 fn log_cause(error: &(dyn std::error::Error + 'static)) {
@@ -311,7 +311,7 @@ impl Error {
 
 Each searches the context values, newest first, then the root error, and finds a value whose type is exactly `T`, as anyhow does. A message root (`Error::msg`, `err!`) answers to its message type: `&'static str` for a literal, `String` for a formatted message. A string context layer answers to `&'static str` or `String`. Errors deeper in the root's `source()` chain are not searched: use [`find`](#find-find_all-find_in_suppressed).
 
-`downcast` moves the value out and frees the rest; on a miss it returns the error unchanged (same allocation). Cost [est.]: under 5 ns for three layers; no allocation.
+`downcast` moves the value out and frees the rest; on a miss it returns the error unchanged (same allocation). Cost: 1.01 ns to the root after three string layers, anyhow 2.47 ns [measured]; the layers are skipped when no layer could hold a `T`. No allocation.
 
 ```rust
 if let Some(io) = error.downcast_ref::<std::io::Error>() {
@@ -443,7 +443,7 @@ The `{:?}` report, block by block, each printed only when it has content: the ou
 
 - **De-duplication.** In `{:#}` and in `Caused by:`, a layer is skipped when the layer before it already ends with `": "` followed by exactly its text, or is exactly its text, so an error whose `Display` already includes its source is not printed twice. Only adjacent layers are compared.
 - **Flags.** Width, fill, and precision are ignored; only `#` changes the output.
-- **Cost.** `{}` and `{:#}` never allocate and never resolve a backtrace [est.: `{}` costs the outer layer's own `Display` plus under 2 ns]. `{:?}` may allocate to resolve backtrace symbols.
+- **Cost.** `{}`, `{:#}`, and `{:?}` do not allocate (`{:?}` may, from `0.4`, to resolve backtrace symbols) [measured by `tests/alloc.rs`]. For an error with three layers: `{}` 7.5 ns (anyhow 8.3), `{:#}` 54.7 ns (anyhow 27.3: the de-duplication rule formats the root into a buffer to compare it), `{:?}` 106.8 ns (anyhow 92.4, which prints no `Location:`) [measured].
 - **Guarded paths.** `{:?}` through [`ExitReport`](#exitreport), [`report`](#report-and-is_reported), [`record`](#record), [`render`](#render-and-renderstyle), and `unraisable` survive a `Display` that panics (with `std` and unwinding), fails, or never stops writing: the layer prints `<display panicked>` or `<display failed>`, and output stops at [`Limits::max_render`](#limits) with `(report truncated)`. `{}` and `{:#}` are not guarded; they behave like any other `Display`.
 
 ## `Result` and `Ok`
@@ -584,7 +584,7 @@ impl FusedIterator for Chain<'_>;
 | CHN-01 | `chain`, `Chain` | 1 | 0.3 |
 | CHN-06 | `DoubleEndedIterator` (`rev`) | 3 | 0.5 |
 
-Yields, outermost first: every context layer (newest to oldest), the root error, then the root's own `source()` chain. These are exactly the links a hand-written `source()` walk from `&*error` visits; `chain()` reads the context layers from the error's own store instead of following `source()`, which is what makes it faster than anyhow's [measured in the prototype: 9 to 11 ns for nine layers, anyhow 24 to 34 ns]. Bounded by [`Limits::max_chain`](#limits) (128) and by a repeat check, so a `source()` that returns itself ends the walk. No allocation; `rev` keeps a bounded buffer on the stack.
+Yields, outermost first: every context layer (newest to oldest), the root error, then the root's own `source()` chain. These are exactly the links a hand-written `source()` walk from `&*error` visits; `chain()` reads the context layers from the error's own store instead of following `source()` [measured: 9.3 ns for nine layers and the root, anyhow 18.4 ns]. Bounded by [`Limits::max_chain`](#limits) (128): a `source()` that returns itself or never ends stops there, and `len()` stays exact. No allocation; `rev` keeps a bounded buffer on the stack.
 
 ```rust
 for (index, cause) in error.chain().enumerate() {
@@ -1224,7 +1224,7 @@ impl From<Error> for Box<dyn core::error::Error + 'static>;
 | STD-02 | `From<Error> for Box<dyn Error ...>` | 3 | 0.3 |
 | STD-03 | `from_boxed` | 3 | 0.3 |
 
-`into_std` gives an owned standard error with the same `Display` and the same `source()` chain: one allocation in all, however many layers there are. `from_boxed` takes a boxed error back; a box made by `into_std` returns the original `Error` unchanged (no double wrapping), and any other box becomes the root, still downcastable to its concrete type.
+`into_std` gives an owned standard error with the same `Display` and the same `source()` chain: one allocation in all, however many layers there are. `from_boxed` takes a boxed error back; a box made by `into_std` returns the original `Error` unchanged (no double wrapping). Any other box becomes the root: `downcast_ref::<Box<dyn Error + Send + Sync>>()` answers with it, and its concrete error is the root link of `chain()` and of the `source()` walk, so `root_cause().downcast_ref::<T>()` finds it (as will [`find`](#find-find_all-find_in_suppressed) in `0.5`). `err!(boxed)` does the same.
 
 ```rust
 let boxed: Box<dyn std::error::Error + Send + Sync> = error.into_std();

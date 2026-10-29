@@ -3,16 +3,25 @@
 use core::error::Error as StdError;
 use core::iter::FusedIterator;
 
+use crate::frame::FrameValue;
 use crate::limits;
 use crate::raw::RawError;
+
+/// One link of the chain, with its text when it is a string the error holds
+/// (a string context layer, or a message root), so formatting can compare
+/// and print it without formatting it.
+pub(crate) struct Link<'a> {
+    pub(crate) error: &'a (dyn StdError + 'static),
+    pub(crate) text: Option<&'a str>,
+}
 
 /// The links of an error's cause chain, outermost first: every context
 /// layer, newest to oldest, then the root error and its own `source()`
 /// chain. Made by [`Error::chain`](crate::Error::chain).
 ///
-/// The context layers are read from the error's own store; the walk is
-/// bounded to 128 links and stops when a `source()` returns a link it
-/// already returned, so a cyclic chain cannot loop.
+/// The context layers are read from the error's own store. The walk is
+/// bounded to 128 links, so a `source()` that returns itself or never ends
+/// cannot loop; `len()` is exact.
 ///
 /// ```
 /// use report_err::Context;
@@ -32,43 +41,37 @@ pub struct Chain<'a> {
     next: Option<&'a (dyn StdError + 'static)>,
     /// Links yielded so far.
     yielded: usize,
-    /// The last two links, for the repeat check.
-    recent: [Option<&'a (dyn StdError + 'static)>; 2],
+    /// Whether the next link after the layers is the root.
+    at_root: bool,
     truncated: bool,
-}
-
-/// Whether `link` is one of the last two links: the same object seen as the
-/// same type. An error and the first field of its struct share an address
-/// but not a type, so the whole trait-object pointer is compared. The
-/// compiler may emit two vtables for one type, so a repeat can go unseen;
-/// the link budget still ends the walk.
-fn seen(recent: &[Option<&(dyn StdError + 'static)>; 2], link: &(dyn StdError + 'static)) -> bool {
-    recent.iter().flatten().any(|r| core::ptr::eq(*r, link))
 }
 
 impl<'a> Chain<'a> {
     pub(crate) fn new(raw: &'a RawError) -> Chain<'a> {
         let root: &'a (dyn StdError + 'static) = raw.root();
-        Chain { raw, frames: raw.frames(), next: Some(root), yielded: 0, recent: [None, None], truncated: false }
+        Chain {
+            raw,
+            frames: raw.frames(),
+            next: Some(root),
+            at_root: true,
+            yielded: 0,
+            truncated: false,
+        }
     }
 
-    /// Whether the walk stopped early: at the link budget, or at a link that
-    /// repeated.
+    /// Whether the walk stopped at the link budget with links left.
     pub(crate) fn truncated(&self) -> bool {
         self.truncated
     }
 
     fn remaining(&self) -> usize {
-        let mut count = self.frames;
-        let mut recent = self.recent;
+        let budget = limits::MAX_CHAIN.saturating_sub(self.yielded);
+        let mut count = self.frames.min(budget);
         let mut cur = self.next;
-        let mut yielded = self.yielded + self.frames;
         while let Some(link) = cur {
-            if yielded >= limits::MAX_CHAIN || seen(&recent, link) {
+            if count >= budget {
                 break;
             }
-            recent = [recent[1], Some(link)];
-            yielded += 1;
             count += 1;
             cur = link.source();
         }
@@ -76,10 +79,9 @@ impl<'a> Chain<'a> {
     }
 }
 
-impl<'a> Iterator for Chain<'a> {
-    type Item = &'a (dyn StdError + 'static);
-
-    fn next(&mut self) -> Option<Self::Item> {
+impl<'a> Chain<'a> {
+    /// The next link, with its text when the error holds it as a string.
+    pub(crate) fn next_link(&mut self) -> Option<Link<'a>> {
         if self.yielded >= limits::MAX_CHAIN {
             if self.frames > 0 || self.next.is_some() {
                 self.truncated = true;
@@ -92,18 +94,34 @@ impl<'a> Iterator for Chain<'a> {
             self.frames -= 1;
             let frame = self.raw.frame(self.frames)?;
             self.yielded += 1;
-            self.recent = [self.recent[1], Some(frame)];
-            return Some(frame);
+            let text = match &frame.value {
+                FrameValue::Static(text) => Some(*text),
+                FrameValue::Text(text) => Some(text.as_str()),
+                FrameValue::Value(_) => None,
+            };
+            return Some(Link { error: frame, text });
         }
         let link = self.next.take()?;
-        if seen(&self.recent, link) {
-            self.truncated = true;
-            return None;
-        }
-        self.recent = [self.recent[1], Some(link)];
         self.yielded += 1;
         self.next = link.source();
-        Some(link)
+        let text = if core::mem::take(&mut self.at_root) {
+            let raw = self.raw;
+            raw.payload_ref::<&'static str>().copied().or_else(|| {
+                raw.payload_ref::<alloc::string::String>()
+                    .map(alloc::string::String::as_str)
+            })
+        } else {
+            None
+        };
+        Some(Link { error: link, text })
+    }
+}
+
+impl<'a> Iterator for Chain<'a> {
+    type Item = &'a (dyn StdError + 'static);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_link().map(|link| link.error)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -156,19 +174,17 @@ mod tests {
     }
     impl core::error::Error for Deep {
         fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
-            DEEP.get(self.0 + 1).map(|d| d as &(dyn core::error::Error + 'static))
+            DEEP.get(self.0 + 1)
+                .map(|d| d as &(dyn core::error::Error + 'static))
         }
     }
 
     #[test]
-    fn test_chain_self_source_stops_and_is_marked_truncated() {
-        // A repeat is caught when the trait-object pointers are equal; when the
-        // compiler emitted two vtables for the type, the walk still stops at the
-        // link budget. Either way it ends, marked truncated.
+    fn test_chain_self_source_stops_at_the_budget() {
         let error = Error::new(Looping).context("ctx");
         let mut chain = error.chain();
         let texts: Vec<_> = chain.by_ref().map(|l| l.to_string()).collect();
-        assert!(texts.len() >= 2 && texts.len() <= crate::limits::MAX_CHAIN, "{}", texts.len());
+        assert_eq!(texts.len(), crate::limits::MAX_CHAIN);
         assert_eq!(texts[0], "ctx");
         assert!(texts[1..].iter().all(|t| t == "looping"));
         assert!(chain.truncated());

@@ -54,7 +54,11 @@ pub(crate) struct Header {
     /// The extension block, made with `Box::leak` and freed in `Drop`.
     ext: Option<NonNull<Ext>>,
     /// Context layers stored: `first`, then `Ext::inline`, then `Ext::spill`.
-    frames: u32,
+    /// At most `max_frames`, which is below 65,536.
+    frames: u16,
+    /// Of those, the layers holding a value other than a string, so a
+    /// downcast to any other type can skip the layers when there are none.
+    values: u16,
     /// Context layers dropped at `max_frames` (saturating).
     omitted: u32,
     /// The innermost context layer; initialised when `frames >= 1`.
@@ -170,7 +174,9 @@ unsafe fn drop_node<P>(node: NonNull<Header>) {
 /// # Safety
 ///
 /// `node` is a live node made by `RawError::make::<P, _>` (I-2).
-unsafe fn payload_of<P: StdError + Send + Sync + 'static>(node: NonNull<Header>) -> NonNull<DynError> {
+unsafe fn payload_of<P: StdError + Send + Sync + 'static>(
+    node: NonNull<Header>,
+) -> NonNull<DynError> {
     // SAFETY: I-3, I-13: a projection to the payload field; no reference is made.
     let payload: *mut P = unsafe { addr_of_mut!((*node.cast::<Node<P>>().as_ptr()).payload) };
     let payload: *mut DynError = payload;
@@ -182,7 +188,8 @@ unsafe fn payload_of<P: StdError + Send + Sync + 'static>(node: NonNull<Header>)
 /// `node` is a live node whose payload is a `BoxedError` (I-2).
 unsafe fn payload_of_boxed(node: NonNull<Header>) -> NonNull<DynError> {
     // SAFETY: I-3: a projection to the payload field of a live node.
-    let payload: *mut BoxedError = unsafe { addr_of_mut!((*node.cast::<Node<BoxedError>>().as_ptr()).payload) };
+    let payload: *mut BoxedError =
+        unsafe { addr_of_mut!((*node.cast::<Node<BoxedError>>().as_ptr()).payload) };
     // SAFETY: the payload is initialised; this reads only the box field, and the
     // object it points to is a separate allocation owned by the box.
     let inner: &DynError = unsafe { &*(*payload).0 };
@@ -209,7 +216,12 @@ unsafe fn take_node<P>(node: NonNull<Header>, out: NonNull<u8>) {
 
 /// The vtable of a node with payload `P` that downcasts as `U` (I-2, I-6).
 fn vtable<P: StdError + Send + Sync + 'static, U: 'static>() -> &'static VTable {
-    &VTable { drop: drop_node::<P>, payload: payload_of::<P>, take: take_node::<P>, type_id: TypeId::of::<U> }
+    &VTable {
+        drop: drop_node::<P>,
+        payload: payload_of::<P>,
+        take: take_node::<P>,
+        type_id: TypeId::of::<U>,
+    }
 }
 
 fn vtable_boxed() -> &'static VTable {
@@ -238,10 +250,19 @@ impl RawError {
         origin: &'static Location<'static>,
     ) -> RawError {
         const { assert!(core::mem::offset_of!(Node<P>, header) == 0) };
-        let header =
-            Header { vtable, origin, ext: None, frames: 0, omitted: 0, first: MaybeUninit::uninit() };
+        let header = Header {
+            vtable,
+            origin,
+            ext: None,
+            frames: 0,
+            values: 0,
+            omitted: 0,
+            first: MaybeUninit::uninit(),
+        };
         let node: &mut Node<P> = Box::leak(Box::new(Node { header, payload }));
-        RawError { node: NonNull::from(node).cast() }
+        RawError {
+            node: NonNull::from(node).cast(),
+        }
     }
 
     pub(crate) fn from_error<E>(error: E, origin: &'static Location<'static>) -> RawError
@@ -255,14 +276,22 @@ impl RawError {
     where
         M: Display + Debug + Send + Sync + 'static,
     {
-        RawError::make(MessageError(message), vtable::<MessageError<M>, M>(), origin)
+        RawError::make(
+            MessageError(message),
+            vtable::<MessageError<M>, M>(),
+            origin,
+        )
     }
 
     pub(crate) fn from_display<M>(message: M, origin: &'static Location<'static>) -> RawError
     where
         M: Display + Send + Sync + 'static,
     {
-        RawError::make(DisplayError(message), vtable::<DisplayError<M>, M>(), origin)
+        RawError::make(
+            DisplayError(message),
+            vtable::<DisplayError<M>, M>(),
+            origin,
+        )
     }
 
     pub(crate) fn from_boxed(error: Box<DynError>, origin: &'static Location<'static>) -> RawError {
@@ -284,6 +313,11 @@ impl RawError {
 
     pub(crate) fn frames(&self) -> usize {
         self.header().frames as usize
+    }
+
+    /// Whether any layer holds a value other than a string.
+    pub(crate) fn has_value_frames(&self) -> bool {
+        self.header().values > 0
     }
 
     pub(crate) fn omitted(&self) -> u32 {
@@ -396,7 +430,8 @@ impl RawError {
         value: FrameValue,
         max_frames: usize,
     ) {
-        let max_frames = max_frames.max(2);
+        let max_frames = max_frames.clamp(2, usize::from(u16::MAX));
+        let is_value = matches!(value, FrameValue::Value(_));
         if self.frames() >= max_frames {
             let index = KEEP_INNER.min(self.frames() - 1);
             self.remove_frame(index);
@@ -404,8 +439,16 @@ impl RawError {
             header.omitted = header.omitted.saturating_add(1);
         }
         let index = self.frames();
-        let link = if index == 0 { node_link(self.node) } else { frame_link(self.node, index - 1) };
-        let frame = Frame { location, value, link };
+        let link = if index == 0 {
+            node_link(self.node)
+        } else {
+            frame_link(self.node, index - 1)
+        };
+        let frame = Frame {
+            location,
+            value,
+            link,
+        };
         if index == 0 {
             // SAFETY: I-3: a projection to the `first` slot, which is not
             // initialised (`frames` is 0).
@@ -427,6 +470,7 @@ impl RawError {
                 let moved = spill.as_ptr() != before;
                 let header = self.header_mut();
                 header.frames = header.frames.saturating_add(1);
+                header.values = header.values.saturating_add(u16::from(is_value));
                 if moved {
                     // The vector reallocated: every spilled layer moved,
                     // including the one just pushed, whose link pointed into
@@ -438,6 +482,7 @@ impl RawError {
         }
         let header = self.header_mut();
         header.frames = header.frames.saturating_add(1);
+        header.values = header.values.saturating_add(u16::from(is_value));
     }
 
     fn header_mut(&mut self) -> &mut Header {
@@ -450,7 +495,12 @@ impl RawError {
             return ext;
         }
         let block = Ext {
-            inline: [MaybeUninit::uninit(), MaybeUninit::uninit(), MaybeUninit::uninit(), MaybeUninit::uninit()],
+            inline: [
+                MaybeUninit::uninit(),
+                MaybeUninit::uninit(),
+                MaybeUninit::uninit(),
+                MaybeUninit::uninit(),
+            ],
             spill: Vec::new(),
         };
         let ext = NonNull::from(Box::leak(Box::new(block)));
@@ -467,6 +517,9 @@ impl RawError {
         }
         let Some(ext) = self.header().ext else { return };
         let ext = ext.as_ptr();
+        let was_value = self
+            .frame(index)
+            .is_some_and(|f| matches!(f.value, FrameValue::Value(_)));
         if index - 1 < INLINE {
             // SAFETY: I-3: a projection to the inline slots.
             let inline = unsafe { addr_of_mut!((*ext).inline) }.cast::<MaybeUninit<Frame>>();
@@ -483,7 +536,11 @@ impl RawError {
             if !spill.is_empty() {
                 let moved = spill.remove(0);
                 // SAFETY: the last inline slot was vacated by the shift.
-                unsafe { inline.wrapping_add(INLINE - 1).write(MaybeUninit::new(moved)) };
+                unsafe {
+                    inline
+                        .wrapping_add(INLINE - 1)
+                        .write(MaybeUninit::new(moved))
+                };
             }
         } else {
             let spill = spill_mut(ext);
@@ -494,6 +551,7 @@ impl RawError {
         }
         let header = self.header_mut();
         header.frames = header.frames.saturating_sub(1);
+        header.values = header.values.saturating_sub(u16::from(was_value));
         self.relink_from(index);
     }
 
@@ -526,7 +584,9 @@ fn frame_ptr(node: NonNull<Header>, index: usize) -> *mut Frame {
     // SAFETY: I-3: a projection to the `ext` field of a live node.
     let field = unsafe { addr_of!((*node).ext) };
     // SAFETY: the field is initialised; it is read by value (a copy).
-    let Some(ext) = (unsafe { *field }) else { return ptr::null_mut() };
+    let Some(ext) = (unsafe { *field }) else {
+        return ptr::null_mut();
+    };
     let ext = ext.as_ptr();
     if index - 1 < INLINE {
         // SAFETY: I-3: a projection to the inline slots of a live block.
@@ -801,7 +861,9 @@ mod tests {
     #[test]
     fn test_raw_over_aligned_payload_64() {
         let raw = RawError::from_error(Align64(9), here());
-        let p = raw.payload_ref::<Align64>().map(|p| core::ptr::from_ref(p) as usize);
+        let p = raw
+            .payload_ref::<Align64>()
+            .map(|p| core::ptr::from_ref(p) as usize);
         assert_eq!(p.map(|p| p % 64), Some(0));
         assert_eq!(raw.root().to_string(), "a64 9");
     }
@@ -810,9 +872,43 @@ mod tests {
     fn test_raw_over_aligned_payload_4096() {
         let mut raw = RawError::from_error(Align4096(3), here());
         raw.push_frame(here(), FrameValue::new("ctx"), 64);
-        let p = raw.payload_ref::<Align4096>().map(|p| core::ptr::from_ref(p) as usize);
+        let p = raw
+            .payload_ref::<Align4096>()
+            .map(|p| core::ptr::from_ref(p) as usize);
         assert_eq!(p.map(|p| p % 4096), Some(0));
         assert_eq!(walk(&raw), ["ctx", "a4096 3"]);
+    }
+
+    #[cfg(feature = "std")]
+    #[derive(Debug)]
+    struct PanicsOnDrop;
+    #[cfg(feature = "std")]
+    impl Display for PanicsOnDrop {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("panics on drop")
+        }
+    }
+    #[cfg(feature = "std")]
+    impl StdError for PanicsOnDrop {}
+    #[cfg(feature = "std")]
+    impl Drop for PanicsOnDrop {
+        fn drop(&mut self) {
+            panic!("payload drop");
+        }
+    }
+
+    /// I-11: a payload whose `Drop` panics. The panic leaves `drop(error)`
+    /// like any value's; the context layers (dropped first, with the header)
+    /// are freed, and nothing is used after it is freed.
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_raw_payload_drop_panics() {
+        extern crate std;
+        let mut raw = RawError::from_error(PanicsOnDrop, here());
+        raw.push_frame(here(), FrameValue::new(String::from("heap text")), 64);
+        raw.push_frame(here(), FrameValue::new("b"), 64);
+        let result = std::panic::catch_unwind(core::panic::AssertUnwindSafe(move || drop(raw)));
+        assert!(result.is_err());
     }
 
     #[test]

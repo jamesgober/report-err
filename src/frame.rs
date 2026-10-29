@@ -47,7 +47,10 @@ impl FrameValue {
         let mut slot = Some(context);
         {
             let any: &mut dyn Any = &mut slot;
-            if let Some(text) = any.downcast_mut::<Option<&'static str>>().and_then(Option::take) {
+            if let Some(text) = any
+                .downcast_mut::<Option<&'static str>>()
+                .and_then(Option::take)
+            {
                 return FrameValue::Static(text);
             }
             if let Some(text) = any.downcast_mut::<Option<String>>().and_then(Option::take) {
@@ -86,11 +89,15 @@ impl FrameValue {
         match self {
             FrameValue::Static(text) => {
                 let mut slot = Some(text);
-                (&mut slot as &mut dyn Any).downcast_mut::<Option<T>>().and_then(Option::take)
+                (&mut slot as &mut dyn Any)
+                    .downcast_mut::<Option<T>>()
+                    .and_then(Option::take)
             }
             FrameValue::Text(text) => {
                 let mut slot = Some(text);
-                (&mut slot as &mut dyn Any).downcast_mut::<Option<T>>().and_then(Option::take)
+                (&mut slot as &mut dyn Any)
+                    .downcast_mut::<Option<T>>()
+                    .and_then(Option::take)
             }
             FrameValue::Value(value) => value.into_any().downcast::<T>().ok().map(|b| *b),
         }
@@ -167,6 +174,11 @@ mod tests {
         assert!(FrameValue::new("a").take::<u8>().is_none());
         assert!(FrameValue::new(String::new()).take::<&str>().is_none());
         assert!(FrameValue::new(Shard(1)).take::<String>().is_none());
-        assert_eq!(FrameValue::new(5u16).downcast_ref::<u16>().map(ToString::to_string), Some("5".into()));
+        assert_eq!(
+            FrameValue::new(5u16)
+                .downcast_ref::<u16>()
+                .map(ToString::to_string),
+            Some("5".into())
+        );
     }
 }

@@ -87,7 +87,10 @@ pub mod kind {
         /// The boxed error as the root ([`Error::from_boxed`]).
         #[track_caller]
         #[cold]
-        pub fn build(self, error: alloc::boxed::Box<dyn core::error::Error + Send + Sync + 'static>) -> Error {
+        pub fn build(
+            self,
+            error: alloc::boxed::Box<dyn core::error::Error + Send + Sync + 'static>,
+        ) -> Error {
             Error::from_boxed(error)
         }
     }

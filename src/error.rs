@@ -1,6 +1,8 @@
 //! `Error`: constructors, context, downcasting, and the `Deref` to
 //! `dyn Error`. Safe code over `raw`.
 
+use alloc::string::String;
+use core::any::TypeId;
 use core::error::Error as StdError;
 use core::fmt::{Debug, Display};
 use core::ops::{Deref, DerefMut};
@@ -61,7 +63,9 @@ impl Error {
     where
         E: StdError + Send + Sync + 'static,
     {
-        Error { raw: RawError::from_error(error, Location::caller()) }
+        Error {
+            raw: RawError::from_error(error, Location::caller()),
+        }
     }
 
     /// Makes an error from a message. The message stays downcastable as its
@@ -76,7 +80,9 @@ impl Error {
     where
         M: Display + Debug + Send + Sync + 'static,
     {
-        Error { raw: RawError::from_message(message, Location::caller()) }
+        Error {
+            raw: RawError::from_message(message, Location::caller()),
+        }
     }
 
     /// An error whose root is a `Display`-only message (context on `None`).
@@ -85,7 +91,9 @@ impl Error {
     where
         M: Display + Send + Sync + 'static,
     {
-        Error { raw: RawError::from_display(message, Location::caller()) }
+        Error {
+            raw: RawError::from_display(message, Location::caller()),
+        }
     }
 
     /// An error value with its first context layer, in one allocation.
@@ -119,7 +127,11 @@ impl Error {
     where
         C: Display + Send + Sync + 'static,
     {
-        self.raw.push_frame(Location::caller(), FrameValue::new(context), limits::MAX_FRAMES);
+        self.raw.push_frame(
+            Location::caller(),
+            FrameValue::new(context),
+            limits::MAX_FRAMES,
+        );
         self
     }
 
@@ -142,12 +154,27 @@ impl Error {
     where
         T: Display + Debug + Send + Sync + 'static,
     {
-        for index in (0..self.raw.frames()).rev() {
-            if let Some(value) = self.raw.frame(index).and_then(|frame| frame.value.downcast_ref::<T>()) {
-                return Some(value);
+        if self.may_be_context::<T>() {
+            for index in (0..self.raw.frames()).rev() {
+                if let Some(value) = self
+                    .raw
+                    .frame(index)
+                    .and_then(|frame| frame.value.downcast_ref::<T>())
+                {
+                    return Some(value);
+                }
             }
         }
         self.raw.payload_ref::<T>()
+    }
+
+    /// Whether a context layer could hold a `T`: a string type, or any type
+    /// when some layer holds a value. Otherwise the layers are skipped.
+    fn may_be_context<T: 'static>(&self) -> bool {
+        let t = TypeId::of::<T>();
+        t == TypeId::of::<&'static str>()
+            || t == TypeId::of::<String>()
+            || self.raw.has_value_frames()
     }
 
     /// As [`downcast_ref`](Error::downcast_ref), mutably.
@@ -164,14 +191,26 @@ impl Error {
         T: Display + Debug + Send + Sync + 'static,
     {
         let mut found = None;
-        for index in (0..self.raw.frames()).rev() {
-            if self.raw.frame(index).is_some_and(|frame| frame.value.is::<T>()) {
+        let frames = if self.may_be_context::<T>() {
+            self.raw.frames()
+        } else {
+            0
+        };
+        for index in (0..frames).rev() {
+            if self
+                .raw
+                .frame(index)
+                .is_some_and(|frame| frame.value.is::<T>())
+            {
                 found = Some(index);
                 break;
             }
         }
         match found {
-            Some(index) => self.raw.frame_mut(index).and_then(|frame| frame.value.downcast_mut::<T>()),
+            Some(index) => self
+                .raw
+                .frame_mut(index)
+                .and_then(|frame| frame.value.downcast_mut::<T>()),
             None => self.raw.payload_mut::<T>(),
         }
     }
@@ -192,8 +231,17 @@ impl Error {
     where
         T: Display + Debug + Send + Sync + 'static,
     {
-        for index in (0..self.raw.frames()).rev() {
-            if self.raw.frame(index).is_some_and(|frame| frame.value.is::<T>()) {
+        let frames = if self.may_be_context::<T>() {
+            self.raw.frames()
+        } else {
+            0
+        };
+        for index in (0..frames).rev() {
+            if self
+                .raw
+                .frame(index)
+                .is_some_and(|frame| frame.value.is::<T>())
+            {
                 let value = self
                     .raw
                     .frame_mut(index)
@@ -384,7 +432,10 @@ mod tests {
 
     #[test]
     fn test_error_deref_source_chain_matches_chain() {
-        let error = Error::new(Wrap(Leaf)).context("a").context(String::from("b")).context(7u8);
+        let error = Error::new(Wrap(Leaf))
+            .context("a")
+            .context(String::from("b"))
+            .context(7u8);
         let by_source = walk(&*error);
         let by_chain: Vec<String> = error.chain().map(|l| l.to_string()).collect();
         assert_eq!(by_source, ["7", "b", "a", "wrap", "leaf"]);
@@ -397,7 +448,10 @@ mod tests {
     fn test_error_no_context_derefs_to_root() {
         let error = Error::new(Wrap(Leaf));
         assert_eq!(error.to_string(), "wrap");
-        assert_eq!(error.source().map(|s| s.to_string()).as_deref(), Some("leaf"));
+        assert_eq!(
+            error.source().map(|s| s.to_string()).as_deref(),
+            Some("leaf")
+        );
         assert_eq!(error.root_cause().to_string(), "leaf");
     }
 
@@ -416,7 +470,9 @@ mod tests {
         let error = Error::new(Leaf).context("ctx");
         let before = core::ptr::from_ref::<DynError>(&*error).cast::<u8>();
         let error = error.downcast::<String>().err();
-        let after = error.as_ref().map(|e| core::ptr::from_ref::<DynError>(&**e).cast::<u8>());
+        let after = error
+            .as_ref()
+            .map(|e| core::ptr::from_ref::<DynError>(&**e).cast::<u8>());
         assert_eq!(after, Some(before));
     }
 

@@ -4,10 +4,13 @@
 
 use core::fmt::{self, Debug, Display, Write};
 
+use crate::chain::Link;
 use crate::error::Error;
 
-/// Bytes of a link's text kept for the de-duplication check.
-const KEEP: usize = 512;
+/// Bytes of a formatted link kept for the de-duplication check. A string the
+/// error holds itself (a string context layer, a message root) is compared
+/// in place, whatever its length.
+const KEEP: usize = 256;
 
 /// The last `KEEP` bytes written to it, and how many were written in all.
 struct Tail {
@@ -17,7 +20,10 @@ struct Tail {
 
 impl Tail {
     fn new() -> Tail {
-        Tail { buf: [0; KEEP], len: 0 }
+        Tail {
+            buf: [0; KEEP],
+            len: 0,
+        }
     }
 
     /// The whole text, when it fit.
@@ -25,7 +31,9 @@ impl Tail {
         if self.len > KEEP {
             return None;
         }
-        self.buf.get(..self.len).and_then(|b| core::str::from_utf8(b).ok())
+        self.buf
+            .get(..self.len)
+            .and_then(|b| core::str::from_utf8(b).ok())
     }
 
     /// The byte `back` positions before the end (0 is the last byte).
@@ -42,7 +50,10 @@ impl Tail {
         if text.len() > self.len || text.len() > KEEP {
             return false;
         }
-        text.iter().rev().enumerate().all(|(back, b)| self.byte_from_end(back) == Some(*b))
+        text.iter()
+            .rev()
+            .enumerate()
+            .all(|(back, b)| self.byte_from_end(back) == Some(*b))
     }
 }
 
@@ -63,16 +74,88 @@ impl Write for Tail {
     }
 }
 
-/// Whether `cur` repeats what `prev` already said: `prev` is exactly `cur`,
-/// or ends with `": "` followed by exactly `cur`. Adjacent layers only.
-fn repeats(prev: &Tail, cur: &Tail) -> bool {
-    let Some(text) = cur.whole() else { return false };
-    let text = text.as_bytes();
-    if !prev.ends_with(text) {
-        return false;
+/// The text of one link, for the de-duplication check: borrowed when the
+/// error holds it as a string, otherwise in one of the two buffers.
+#[derive(Clone, Copy)]
+enum Text<'a> {
+    None,
+    Str(&'a str),
+    Buf(usize),
+}
+
+/// Two buffers, made only when a link has to be formatted, and used in turn
+/// so the previous link's text is never overwritten by the current one.
+struct Buffers {
+    tails: [Option<Tail>; 2],
+}
+
+impl Buffers {
+    fn new() -> Buffers {
+        Buffers {
+            tails: [None, None],
+        }
     }
-    prev.len == text.len()
-        || (prev.byte_from_end(text.len()) == Some(b' ') && prev.byte_from_end(text.len() + 1) == Some(b':'))
+
+    fn tail(&self, slot: usize) -> Option<&Tail> {
+        self.tails.get(slot).and_then(Option::as_ref)
+    }
+
+    /// The text of `link`, formatted into the buffer `prev` does not use when
+    /// the error does not hold it as a string.
+    fn capture<'a>(&mut self, link: &Link<'a>, prev: Text<'_>) -> Result<Text<'a>, fmt::Error> {
+        if let Some(text) = link.text {
+            return Ok(Text::Str(text));
+        }
+        let slot = usize::from(matches!(prev, Text::Buf(0)));
+        let Some(entry) = self.tails.get_mut(slot) else {
+            return Ok(Text::None);
+        };
+        let tail = entry.get_or_insert_with(Tail::new);
+        tail.len = 0;
+        write!(tail, "{}", link.error)?;
+        Ok(Text::Buf(slot))
+    }
+
+    /// Whether `cur` repeats what `prev` already said: `prev` is exactly
+    /// `cur`, or ends with `": "` followed by exactly `cur`.
+    fn repeats(&self, prev: Text<'_>, cur: Text<'_>) -> bool {
+        let cur = match cur {
+            Text::Str(text) => text,
+            Text::Buf(slot) => match self.tail(slot).and_then(Tail::whole) {
+                Some(text) => text,
+                None => return false,
+            },
+            Text::None => return false,
+        };
+        match prev {
+            Text::Str(prev) => {
+                prev == cur
+                    || prev
+                        .strip_suffix(cur)
+                        .is_some_and(|head| head.ends_with(": "))
+            }
+            Text::Buf(slot) => self.tail(slot).is_some_and(|prev| {
+                prev.ends_with(cur.as_bytes())
+                    && (prev.len == cur.len()
+                        || (prev.byte_from_end(cur.len()) == Some(b' ')
+                            && prev.byte_from_end(cur.len() + 1) == Some(b':')))
+            }),
+            Text::None => false,
+        }
+    }
+
+    /// Writes the link's text, from the borrowed string or the buffer when
+    /// it fit, else by formatting the link again.
+    fn write(&self, out: &mut dyn Write, text: Text<'_>, link: &Link<'_>) -> fmt::Result {
+        match text {
+            Text::Str(text) => out.write_str(text),
+            Text::Buf(slot) => match self.tail(slot).and_then(Tail::whole) {
+                Some(text) => out.write_str(text),
+                None => write!(out, "{}", link.error),
+            },
+            Text::None => write!(out, "{}", link.error),
+        }
+    }
 }
 
 impl Display for Error {
@@ -87,26 +170,22 @@ impl Display for Error {
 
 /// `{:#}`: every link on one line, joined by `": "`, repeats skipped.
 fn write_chain(error: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    let mut prev = Tail::new();
-    let mut cur = Tail::new();
+    let mut buffers = Buffers::new();
+    let mut prev = Text::None;
     let mut first = true;
     let mut chain = error.chain();
-    for link in chain.by_ref() {
-        cur.len = 0;
-        write!(cur, "{link}")?;
-        if !first && repeats(&prev, &cur) {
-            core::mem::swap(&mut prev, &mut cur);
+    while let Some(link) = chain.next_link() {
+        let cur = buffers.capture(&link, prev)?;
+        if !first && buffers.repeats(prev, cur) {
+            prev = cur;
             continue;
         }
         if !first {
             f.write_str(": ")?;
         }
-        match cur.whole() {
-            Some(text) => f.write_str(text)?,
-            None => write!(f, "{link}")?,
-        }
+        buffers.write(f, cur, &link)?;
         first = false;
-        core::mem::swap(&mut prev, &mut cur);
+        prev = cur;
     }
     if chain.truncated() {
         f.write_str(": (chain truncated)")?;
@@ -126,44 +205,61 @@ impl Debug for Error {
 
 /// `{:?}`: the report (anyhow's layout first, then report-err's blocks).
 fn write_report(error: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    // First pass: which causes are repeats (bit n: link n + 1 is skipped).
+    // First pass: which causes repeat the link before them (bit n: cause n,
+    // the link after the outermost one, is skipped). The chain holds at most
+    // 128 links, so 127 causes.
     let mut skip: u128 = 0;
     let mut printed = 0usize;
     {
-        let mut prev = Tail::new();
-        let mut cur = Tail::new();
-        for (n, link) in error.chain().enumerate() {
-            cur.len = 0;
-            write!(cur, "{link}")?;
+        let mut buffers = Buffers::new();
+        let mut prev = Text::None;
+        let mut chain = error.chain();
+        let mut n = 0usize;
+        while let Some(link) = chain.next_link() {
+            let cur = buffers.capture(&link, prev)?;
             if n > 0 {
-                if repeats(&prev, &cur) {
+                if buffers.repeats(prev, cur) {
                     skip |= 1u128 << ((n - 1) % 128);
                 } else {
                     printed += 1;
                 }
             }
-            core::mem::swap(&mut prev, &mut cur);
+            prev = cur;
+            n += 1;
         }
     }
 
     let mut chain = error.chain();
-    if let Some(outer) = chain.next() {
-        write!(f, "{outer}")?;
+    if let Some(outer) = chain.next_link() {
+        match outer.text {
+            Some(text) => f.write_str(text)?,
+            None => write!(f, "{}", outer.error)?,
+        }
     }
     if printed > 0 {
         f.write_str("\n\nCaused by:")?;
         let mut number = 0usize;
-        for (n, link) in chain.by_ref().enumerate() {
-            if skip & (1u128 << (n % 128)) != 0 {
+        let mut n = 0usize;
+        while let Some(link) = chain.next_link() {
+            let skipped = skip & (1u128 << (n % 128)) != 0;
+            n += 1;
+            if skipped {
                 continue;
             }
             f.write_str("\n")?;
-            let mut out = Indented { inner: f, number: (printed > 1).then_some(number), started: false };
-            write!(out, "{link}")?;
+            let mut out = Indented {
+                inner: f,
+                number: (printed > 1).then_some(number),
+                started: false,
+            };
+            match link.text {
+                Some(text) => out.write_str(text)?,
+                None => write!(out, "{}", link.error)?,
+            }
             number += 1;
         }
     } else {
-        chain.by_ref().for_each(drop);
+        while chain.next_link().is_some() {}
     }
     if chain.truncated() {
         f.write_str("\n    (chain truncated)")?;
@@ -195,7 +291,14 @@ struct Layers<'a>(&'a Error);
 impl Debug for Layers<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let raw = &self.0.raw;
-        f.debug_list().entries((0..raw.frames()).rev().filter_map(|i| raw.frame(i)).map(Quoted)).finish()
+        f.debug_list()
+            .entries(
+                (0..raw.frames())
+                    .rev()
+                    .filter_map(|i| raw.frame(i))
+                    .map(Quoted),
+            )
+            .finish()
     }
 }
 
@@ -300,7 +403,9 @@ mod tests {
 
     #[test]
     fn test_format_display_outer_only_and_alternate_chain() {
-        let error = Error::new(Io).context("reading config").context("starting server");
+        let error = Error::new(Io)
+            .context("reading config")
+            .context("starting server");
         assert_eq!(format!("{error}"), "starting server");
         assert_eq!(
             format!("{error:#}"),
@@ -311,7 +416,10 @@ mod tests {
     #[test]
     fn test_format_dedup_exact_suffix_and_identical() {
         let error = Error::new(Repeats(Io));
-        assert_eq!(format!("{error:#}"), "io error: No such file or directory (os error 2)");
+        assert_eq!(
+            format!("{error:#}"),
+            "io error: No such file or directory (os error 2)"
+        );
         let error = Error::msg("same").context("same");
         assert_eq!(format!("{error:#}"), "same");
     }
@@ -326,7 +434,9 @@ mod tests {
 
     #[test]
     fn test_format_report_layout() {
-        let error = Error::new(Io).context("reading config").context("starting server");
+        let error = Error::new(Io)
+            .context("reading config")
+            .context("starting server");
         let report = format!("{error:?}");
         let want = format!(
             "starting server\n\nCaused by:\n    0: reading config\n    1: No such file or directory (os error 2)\n\nLocation: {}",
@@ -342,7 +452,10 @@ mod tests {
         assert_eq!(format!("{error:?}"), want);
 
         let error = Error::msg("alone");
-        assert_eq!(format!("{error:?}"), format!("alone\n\nLocation: {}", error.location()));
+        assert_eq!(
+            format!("{error:?}"),
+            format!("alone\n\nLocation: {}", error.location())
+        );
     }
 
     #[test]
@@ -359,7 +472,10 @@ mod tests {
     fn test_format_report_indents_multi_line_causes() {
         let error = Error::msg("line one\nline two").context("a").context("b");
         let report = format!("{error:?}");
-        assert!(report.contains("    0: a\n    1: line one\n       line two"), "{report}");
+        assert!(
+            report.contains("    0: a\n    1: line one\n       line two"),
+            "{report}"
+        );
     }
 
     #[test]
@@ -367,7 +483,20 @@ mod tests {
         let long: String = "x".repeat(3 * KEEP);
         let error = Error::msg(long.clone()).context("outer");
         assert_eq!(format!("{error:#}"), format!("outer: {long}"));
+        // Strings the error holds are compared in place at any length.
         let error = Error::msg(long.clone()).context(long.clone());
+        assert_eq!(format!("{error:#}"), long);
+        // A formatted link longer than the buffer cannot be compared, so it is
+        // written out in full.
+        #[derive(Debug)]
+        struct Long(String);
+        impl Display for Long {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str(&self.0)
+            }
+        }
+        impl core::error::Error for Long {}
+        let error = Error::new(Long(long.clone())).context(long.clone());
         assert_eq!(format!("{error:#}"), format!("{long}: {long}"));
     }
 
@@ -382,7 +511,10 @@ mod tests {
     fn test_format_structure() {
         let error = Error::msg("root \"q\"").context("a");
         let text = format!("{error:#?}");
-        assert!(text.starts_with("Error {\n    message: \"a\",\n    location: "), "{text}");
+        assert!(
+            text.starts_with("Error {\n    message: \"a\",\n    location: "),
+            "{text}"
+        );
         assert!(text.contains("layers: [\n        \"a\",\n    ],"), "{text}");
         assert!(text.contains("root: \"root \\\"q\\\"\""), "{text}");
     }
@@ -396,10 +528,12 @@ mod tests {
         tail.write_str(": end").ok();
         assert!(tail.whole().is_none());
         assert!(tail.ends_with(b"end"));
-        assert!(repeats(&tail, &{
-            let mut t = Tail::new();
-            t.write_str("end").ok();
-            t
-        }));
+        let mut buffers = Buffers::new();
+        buffers.tails[0] = Some(tail);
+        assert!(buffers.repeats(Text::Buf(0), Text::Str("end")));
+        assert!(!buffers.repeats(Text::Buf(0), Text::Str("nd")));
+        assert!(buffers.repeats(Text::Str("x: end"), Text::Str("end")));
+        assert!(buffers.repeats(Text::Str("end"), Text::Str("end")));
+        assert!(!buffers.repeats(Text::Str("xend"), Text::Str("end")));
     }
 }

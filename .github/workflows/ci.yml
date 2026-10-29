@@ -102,14 +102,48 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Miri setup
         run: cargo miri setup
+      # Unit and integration tests; the doc tests read files, which Miri
+      # isolates, and exercise no unsafe code of their own.
       - name: Miri test (default features)
-        run: cargo miri test
+        run: cargo miri test --lib --tests
         env:
           MIRIFLAGS: ${{ matrix.flags }}
       - name: Miri test (no default features)
-        run: cargo miri test --no-default-features
+        run: cargo miri test --lib --tests --no-default-features
         env:
           MIRIFLAGS: ${{ matrix.flags }}
+
+  asan:
+    name: AddressSanitizer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      # `--target` keeps build scripts out of the sanitizer.
+      - name: Test under AddressSanitizer
+        run: cargo test --lib --tests --target x86_64-unknown-linux-gnu
+        env:
+          RUSTFLAGS: "-Zsanitizer=address -D warnings"
+          ASAN_OPTIONS: "detect_leaks=1"
+
+  benches:
+    name: Benchmarks (build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: benches
+      - name: Format
+        run: cargo fmt --manifest-path benches/Cargo.toml -- --check
+      - name: Clippy
+        run: cargo clippy --manifest-path benches/Cargo.toml --benches -- -D warnings
+      - name: Build
+        run: cargo bench --manifest-path benches/Cargo.toml --no-run
 
   loom:
     name: Loom

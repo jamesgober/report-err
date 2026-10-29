@@ -64,7 +64,9 @@ impl Error {
     pub fn from_boxed(error: Box<DynError>) -> Error {
         match error.downcast::<Boxed>() {
             Ok(boxed) => boxed.0,
-            Err(error) => Error { raw: RawError::from_boxed(error, Location::caller()) },
+            Err(error) => Error {
+                raw: RawError::from_boxed(error, Location::caller()),
+            },
         }
     }
 }
@@ -125,7 +127,9 @@ mod tests {
         assert!(error.downcast_ref::<Box<DynError>>().is_some());
         assert!(error.root_cause().is::<core::fmt::Error>());
         assert!((*error).is::<core::fmt::Error>());
-        let boxed: Box<DynError> = error.downcast().unwrap_or_else(|_| Box::new(core::fmt::Error));
+        let boxed: Box<DynError> = error
+            .downcast()
+            .unwrap_or_else(|_| Box::new(core::fmt::Error));
         assert!(boxed.is::<core::fmt::Error>());
     }
 }

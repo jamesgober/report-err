@@ -26,13 +26,15 @@ Requires: define-err's own 0.2 design lock (its API approved), so the names repo
 - [x] The simplicity review: every Tier 1 use in `PLAN.md` 8.2 and in `docs/API.md` "Tier 1 on one screen" is one or two lines, with the names anyhow users already write.
 - [x] One new defence idea recorded in `PLAN.md` section 19 (public text never falls back to `Display`, D-015).
 
-## v0.3.0 - Core: anyhow parity
+## v0.3.0 - Core: anyhow parity (DONE, 2026-10-29)
 API: ROOT-02, ROOT-03, ERR-01 to ERR-10, ERR-17, CTX-01, CTX-02, MAC-01 to MAC-03, CHN-01, CHN-02, MAIN-01, STD-01 to STD-03; `Deref`, `DerefMut`, and `AsRef` to `dyn Error` (D-003).
 Exit: a kraken branch migrated by the `PLAN.md` 8.14.1 pass compiles and passes its tests (trial; the merge happens at 0.8); edge cases E-1 to E-49d and E-57 to E-65 that apply to the 0.3 surface pass.
-- [ ] `src/raw.rs` with every invariant test; Miri clean under both aliasing models; ASan job active.
-- [ ] Flat frames with the header slot and the chain view; formatting rules for message, causes, location; de-duplication rule.
-- [ ] Counting-allocator tests for every 7.5 row that exists at 0.3; the anyhow parity suite for the 0.3 surface, including hand-written `source()` walks; the `no_std` build and tests.
-- [ ] `docs/MIGRATING.md`, `docs/UNSAFE.md` updated.
+- [x] `src/raw.rs` with every invariant test (I-1 to I-13); Miri clean under both aliasing models with strict provenance; ASan job active.
+- [x] Flat frames with the header slot and the chain view, the per-link mechanism chosen by benchmark (D-011); formatting rules for message, causes, location; de-duplication rule.
+- [x] Counting-allocator tests for every 7.5 row that exists at 0.3; the anyhow parity suite for the 0.3 surface, including hand-written `source()` walks; the `no_std` build and tests.
+- [x] `docs/MIGRATING.md`, `docs/UNSAFE.md` updated.
+- [x] kraken trial migration (2026-10-29): 2 manifest lines and 36 source lines changed by the find-and-replace pass, no hand edits; 1,974 tests passed with report-err as with anyhow, and the same 3 tests failed with both (they link a native program; "Linking failed" on the machine used). Details in `docs/MIGRATING.md`.
+- [x] Benchmarks against anyhow (PLAN 11.4). One measured exception recorded for 0.6: `{:#}` (D-022).
 
 ## v0.4.0 - Extended: codes, sections, attachments, trace, exit codes
 API: ROOT-04, ERR-11 to ERR-15, ERR-18, CTX-03 to CTX-06, MAC-04, ATT-01 to ATT-07, TRC-01 to TRC-05, CFG-05, MAIN-02, MAIN-03, HOOK-05.
