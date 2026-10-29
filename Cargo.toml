@@ -3,7 +3,7 @@
 # =============================================================================
 [package]
 name    = "report-err"
-version = "0.1.0"
+version = "0.2.0"
 
 # Minimum Supported Rust Version (MSRV)
 # 1.81: `core::error::Error` is stable in `core` from 1.81, which the `no_std`
@@ -53,18 +53,20 @@ default = ["std"]
 # boundary, `ExitReport` and exit codes, panic isolation in the creation
 # hook and in guarded rendering, the standard-error fallback of
 # `unraisable`. Without it the crate is `no_std` with `alloc`.
-std = []
+std = ["define-err/std"]
 
-# Assertions for tests: a fault's chain, code, and sections.
+# Assertions for tests: an error's chain, code, and sections.
 testing = []
 
 
 # DEPENDENCIES
 # #################################
 [dependencies]
-# None yet. define-err (codes, severity, categories, kinds, the reporting
-# facade) is added by published version, never `path`, in 0.4.0, the first
-# version that needs it (dev/PLAN.md section 3.2).
+# define-err: codes, severity, categories, kinds, the identity probe, the
+# error record, and the reporting facade (dev/PLAN.md section 3.4). By
+# published version, never `path`; `alloc` always, `std` with ours (D-019).
+# Its types are first used in 0.4.0.
+define-err = { version = "0.2", default-features = false, features = ["alloc"] }
 
 
 # DEV DEPENDENCIES

@@ -21,7 +21,7 @@
         <strong>report-err</strong> gives application code one error type that holds any error, gathers context as it travels up the stack, and prints a clear report when it reaches <code>main</code>. It is the <code>anyhow</code> you know: <code>Error</code>, <code>Result</code>, <code>Context</code>, <code>bail!</code>, <code>ensure!</code>, <code>?</code>, a <code>source()</code> chain through every context layer, all with the same names, so moving from anyhow is a change of crate name.
     </p>
     <p>
-        On top of that, an error can carry an error code with its severity, category, and exit code; a propagation trace of every place it passed through; typed attachments read back by type; notes, warnings, and suggestions for the person reading the report; several causes; and suppressed cleanup failures. A panic boundary turns a caught panic into an error, and <code>main</code> can exit with a code chosen from the error. All of it costs nothing until used: an error that only carries its cause and location is one allocation and one machine word, the same as anyhow. No dependencies outside the portfolio, and <code>no_std</code> with <code>alloc</code>.
+        On top of that, an error can carry an error code with its severity, category, and exit code; a propagation trace of every place it passed through; typed attachments read back by type; notes, warnings, and suggestions for the person reading the report; several causes; and suppressed cleanup failures. A panic boundary turns a caught panic into an error, and <code>main</code> can exit with a code chosen from the error. All of it costs nothing until used: an error that only carries its cause and location is one allocation and one machine word, the same as anyhow. Its one dependency is <a href="https://crates.io/crates/define-err">define-err</a>, the portfolio's library for error codes, severity, and categories; it is <code>no_std</code> with <code>alloc</code>.
     </p>
     <br>
     <hr>
@@ -29,7 +29,7 @@
         <strong>MSRV is 1.81+</strong> (Rust 2021 edition). <code>no_std</code> + <code>alloc</code>; <code>std</code> on by default.
     </p>
     <blockquote>
-        <strong>Status: scaffold (<code>0.1.0</code>).</strong> No functional code yet; this release claims the name and sets up the repository, the plan, and CI. The design is in <a href="./dev/PLAN.md"><code>dev/PLAN.md</code></a> and the schedule in <a href="./dev/ROADMAP.md"><code>dev/ROADMAP.md</code></a>. The public API is locked in <code>docs/API.md</code> at <code>0.2.0</code>; the anyhow surface ships in <code>0.3.0</code>.
+        <strong>Status: design lock (<code>0.2.0</code>).</strong> No functional code yet. The public API is written in <a href="./docs/API.md"><code>docs/API.md</code></a> and the audit of its <code>unsafe</code> core in <a href="./docs/UNSAFE.md"><code>docs/UNSAFE.md</code></a>; the design is in <a href="./dev/PLAN.md"><code>dev/PLAN.md</code></a> and the schedule in <a href="./dev/ROADMAP.md"><code>dev/ROADMAP.md</code></a>. The anyhow surface ships in <code>0.3.0</code>.
     </blockquote>
 </div>
 

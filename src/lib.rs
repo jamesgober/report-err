@@ -41,11 +41,10 @@
 //!
 //! ## Status
 //!
-//! Scaffold. The design is in `dev/PLAN.md` and the milestone schedule in
-//! `dev/ROADMAP.md` (both in the
-//! [repository](https://github.com/jamesgober/report-err)). The public API is
-//! locked in `docs/API.md` at `0.2.0`; the core (the `anyhow` surface) ships
-//! in `0.3.0`.
+//! Design lock. The public API is written in `docs/API.md`, the design in
+//! `dev/PLAN.md`, and the milestone schedule in `dev/ROADMAP.md` (all in the
+//! [repository](https://github.com/jamesgober/report-err)). The core (the
+//! `anyhow` surface) ships in `0.3.0`.
 
 #![doc(html_root_url = "https://docs.rs/report-err")]
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -75,9 +74,10 @@
 )]
 
 // An error lives on the heap, so the crate needs `alloc` even without `std`.
-// The core types start using it in 0.3.0.
+// The core types start using it in 0.3.0, and define-err's types in 0.4.0.
 #[allow(unused_extern_crates)]
 extern crate alloc;
+use define_err as _;
 #[cfg(feature = "std")]
 extern crate std;
 
