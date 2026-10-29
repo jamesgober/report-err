@@ -3,7 +3,7 @@
 # =============================================================================
 [package]
 name    = "report-err"
-version = "0.2.0"
+version = "0.3.0"
 
 # Minimum Supported Rust Version (MSRV)
 # 1.81: `core::error::Error` is stable in `core` from 1.81, which the `no_std`
@@ -34,6 +34,9 @@ documentation = "https://docs.rs/report-err"
 
 # Authors
 authors = ["James Gober <me@jamesgober.com>"]
+
+# The benchmarks are their own package in benches/ (PLAN 11.3).
+autobenches = false
 
 [package.metadata.docs.rs]
 all-features = true
@@ -72,6 +75,9 @@ define-err = { version = "0.2", default-features = false, features = ["alloc"] }
 # DEV DEPENDENCIES
 # #################################
 [dev-dependencies]
+# The parity suite (tests/parity_anyhow.rs) runs the same programs against
+# anyhow; pinned so a change in anyhow shows up as a deliberate bump.
+anyhow = "=1.0.104"
 
 
 # LINTS

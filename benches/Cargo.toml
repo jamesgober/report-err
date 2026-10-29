@@ -1,0 +1,22 @@
+# Benchmarks for report-err (PLAN 11). Not published and not part of the
+# crate's build: a separate package, so the MSRV jobs never build criterion.
+# Run: cargo bench --manifest-path benches/Cargo.toml
+[package]
+name = "report-err-benches"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+report-err = { path = ".." }
+anyhow = "=1.0.104"
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "core"
+harness = false
+
+[profile.bench]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
