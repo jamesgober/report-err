@@ -11,6 +11,12 @@
 
 ## [Unreleased]
 
+---
+
+## [0.2.0] - 2026-10-29
+
+The design lock. No functional code yet.
+
 ### Added
 
 - `docs/API.md`: the public API of 1.0 (items ROOT, ERR, CTX, MAC, CHN, ATT,
@@ -26,7 +32,12 @@
 - `dev/PLAN.md`: the `source()` chain view measured on a prototype (size and
   allocation counts unchanged; Miri-clean under Stacked Borrows and Tree
   Borrows), define-err's answers to the four interface requests, decisions
-  D-009 to D-015, a new defence idea.
+  D-009 to D-015, a new defence idea; James's decisions on the one-word
+  representation (D-016) and the macro name `err!` with `format_err!` as an
+  alias (D-017); every other open decision accepted (D-018).
+- define-err `0.2` is a dependency, by published version, with
+  `default-features = false` and `alloc`; report-err's `std` feature turns
+  on define-err's (D-019). Its types are first used in `0.4.0`.
 
 ---
 
@@ -57,5 +68,6 @@ The scaffold and the plan. No functional code yet.
   cases, open decisions, and the decision log D-001 to D-008),
   `dev/DIRECTIVES.md`, and `dev/ROADMAP.md`.
 
-[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/jamesgober/report-err/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jamesgober/report-err/releases/tag/v0.1.0

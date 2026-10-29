@@ -15,7 +15,7 @@ Exit: CI green on every job; the crate published to claim the name.
 - [x] `dev/PLAN.md` with James's two decisions applied (`Error`, D-002; a real `source()` chain, D-003), `dev/DIRECTIVES.md`, this file.
 - [x] CI: Linux, macOS, Windows on x86_64 and aarch64, stable and 1.81; `no_std` build; Miri (Stacked Borrows, Tree Borrows, strict provenance); loom; package; security (audit, deny) (D-006).
 
-## v0.2.0 - Design lock
+## v0.2.0 - Design lock (DONE, 2026-10-29)
 Exit: James approves `docs/API.md`; the define-err interface (X-1 to X-12) is locked.
 Requires: define-err's own 0.2 design lock (its API approved), so the names report-err uses from it are final: approved by James on 2026-10-29.
 - [x] `docs/API.md` for every item in `PLAN.md` section 8 (signatures, behaviour, errors, costs, examples), each marked with the version it arrives in (ERR-19 added for `Deref`, D-014).

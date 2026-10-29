@@ -4,7 +4,7 @@
 >
 > **Read order:** [`../REPS.md`](../REPS.md), then [`DIRECTIVES.md`](./DIRECTIVES.md), then **this file**, then [`ROADMAP.md`](./ROADMAP.md).
 >
-> **Status:** `0.1.0` published (2026-10-23). The `0.2.0` design lock ([`../docs/API.md`](../docs/API.md), [`../docs/UNSAFE.md`](../docs/UNSAFE.md)) is complete: James decided RD-3 and RD-18 and approved define-err's API (2026-10-29), against which report-err's API is written; the chain view of 7.6.1 was prototyped and measured (D-009). `0.3.0` (the anyhow surface) is next. Numbers marked [est.] are estimates; numbers marked [measured] were measured on the machine named in 11.4.
+> **Status:** `0.2.0` published (2026-10-29). The `0.2.0` design lock ([`../docs/API.md`](../docs/API.md), [`../docs/UNSAFE.md`](../docs/UNSAFE.md)) is complete: James decided RD-3 and RD-18 and approved define-err's API (2026-10-29), against which report-err's API is written; the chain view of 7.6.1 was prototyped and measured (D-009). `0.3.0` (the anyhow surface) is next. Numbers marked [est.] are estimates; numbers marked [measured] were measured on the machine named in 11.4.
 >
 > **Two decisions by James override the original design** (2026-10-22): the main type is named `Error`, like `anyhow::Error`, so migrating from anyhow is a change of crate name (D-002, reversing RD-2's `Fault`); and an `Error` dereferences to a `&dyn Error` whose `source()` walks every context layer and then the root cause, as anyhow's does (D-003, reversing RD-4's trade-off). This plan is written with both applied; section 7.6 describes how the flat context store keeps its allocation counts while every layer becomes a link of a real `source()` chain.
 
