@@ -17,13 +17,13 @@ Exit: CI green on every job; the crate published to claim the name.
 
 ## v0.2.0 - Design lock
 Exit: James approves `docs/API.md`; the define-err interface (X-1 to X-12) is locked.
-Requires: define-err's own 0.2 design lock (its API approved), so the names report-err uses from it are final. **Blocked on this, 2026-10-23**: define-err's `docs/API.md` is written and waiting for James.
-- [x] `docs/API.md` drafted for every item in `PLAN.md` section 8 (signatures, behaviour, errors, costs, examples), each marked with the version it arrives in (2026-10-23; ERR-19 added for `Deref`, D-014). Final after define-err's API is approved.
+Requires: define-err's own 0.2 design lock (its API approved), so the names report-err uses from it are final: approved by James on 2026-10-29.
+- [x] `docs/API.md` for every item in `PLAN.md` section 8 (signatures, behaviour, errors, costs, examples), each marked with the version it arrives in (ERR-19 added for `Deref`, D-014).
 - [x] `docs/UNSAFE.md` first version: layout, invariants I-1 to I-13, the chain view, Miri commands (2026-10-23).
 - [x] The chain view (`PLAN.md` 7.6.1, D-003) prototyped, Miri-clean under both aliasing models with strict provenance, its cost measured and recorded (D-009): one word and every allocation count unchanged, so nothing to escalate.
-- [ ] The define-err interface X-1 to X-12 agreed with define-err's plan and recorded in both plans. All four requests (X-1 niche, X-7 builders, X-8 `report_record`, X-9 creation-hook slot) are accepted in define-err's draft 0.2 API (D-012); this item closes when James approves define-err's `docs/API.md`.
-- [ ] Every open decision in `PLAN.md` section 17 answered by James or accepted as recommended, recorded in the decision log; RD-3 (one word) and RD-18 (macro name) settled.
-- [ ] The simplicity review: every Tier 1 use in `PLAN.md` 8.2 is one or two lines.
+- [x] The define-err interface X-1 to X-12 agreed with define-err's plan and recorded in both plans: all four requests accepted (D-012); James approved define-err's `docs/API.md` on 2026-10-29; define-err `0.2` is a dependency by version (D-019).
+- [x] Every open decision in `PLAN.md` section 17 answered by James or accepted as recommended, recorded in the decision log: RD-3 and RD-18 decided by James on 2026-10-29 (D-016, D-017); the rest accepted (D-018).
+- [x] The simplicity review: every Tier 1 use in `PLAN.md` 8.2 and in `docs/API.md` "Tier 1 on one screen" is one or two lines, with the names anyhow users already write.
 - [x] One new defence idea recorded in `PLAN.md` section 19 (public text never falls back to `Display`, D-015).
 
 ## v0.3.0 - Core: anyhow parity
