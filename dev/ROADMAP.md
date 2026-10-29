@@ -38,11 +38,11 @@ Exit: a kraken branch migrated by the `PLAN.md` 8.14.1 pass compiles and passes 
 
 ## v0.4.0 - Extended: codes, sections, attachments, trace, exit codes
 API: ROOT-04, ERR-11 to ERR-15, ERR-18, CTX-03 to CTX-06, MAC-04, ATT-01 to ATT-07, TRC-01 to TRC-05, CFG-05, MAIN-02, MAIN-03, HOOK-05.
-Requires: define-err published (0.3 or later) with its interface locked at its 0.2.
+Requires: define-err published with codes, severity, categories, kinds, and the identity probe. **Blocked, 2026-10-29: these arrive in define-err 0.4** (its roadmap: CODE, SEV, CAT, KND, INF, PRB items); define-err 0.3, published, has the thiserror surface only. 0.4.0 is released once define-err 0.4 is out, because its P0 items (ERR-11, ERR-12, CTX-03, MAC-04) need it.
 Exit: a CLI (cli-forge or hive-exec, James's choice) builds against 0.4 with `fn main() -> ExitReport` and category exit codes.
-- [ ] define-err added by published version; codes through `identify` and `innermost_code`; catalogs; `from_info`.
-- [ ] `ExitReport` with exit-code selection and terminal escaping; backtraces; trace and trail; attachments and sections; the remaining `{:?}` blocks.
-- [ ] Edge cases E-50 to E-56, E-66 to E-80, E-93, E-94.
+- [ ] define-err 0.4 by published version; codes through `identify` and `innermost_code`; catalogs (CFG-05); `from_info` (ERR-18, HOOK-05); code-first macro arms (MAC-04); `coded` on `Result` and `Option` (CTX-03); severity, category, kinds, public message (ERR-11 to ERR-15); the category step of the exit code; the `Code:` block of the report.
+- [x] Done on `feature/0.4-extended` (2026-10-29), independent of define-err: attachments and `attach_display` (ATT-01 to ATT-04), sections (ATT-05 to ATT-07, CTX-04), `attach` and `trace` on `Context` (CTX-05, CTX-06), trace points and the trail (TRC-01 to TRC-03), lazy backtraces captured at the root only (TRC-04, TRC-05), `ExitReport` with terminal and bidirectional-control escaping and a 1 MiB cap (MAIN-02), `exit_code` and `with_exit_code` (MAIN-03, without the category step yet), `Ok` (ROOT-04); the report's sections, `Trace:`, `Attachments:`, `Omitted:`, and `Backtrace:` blocks. Tests in `tests/extended.rs`; Miri-clean under both models.
+- [ ] Edge cases E-50 to E-56 (codes) and E-93, E-94 (`ExitReport` as a subprocess) with define-err 0.4; E-66 to E-80 done.
 
 ## v0.5.0 - Feature complete
 API: ERR-16, CTX-07, CHN-03 to CHN-06, GRP-01 to GRP-07, SUP-01 to SUP-04, CFG-01 to CFG-04, MAIN-04, BND-01 to BND-03, HOOK-01 to HOOK-04, STD-04, TST-01.
