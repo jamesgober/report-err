@@ -68,9 +68,27 @@ Exit: both migrations green; every surprise fixed or recorded in `docs/MIGRATING
 - [ ] One more application migrated (a Hive DB tool or WASP boot code) using codes, `ExitReport`, and `report()`.
 
 ## v0.9.0 - Beta and release candidates
-Exit: two weeks without an API change; every document checked against the build; James's review done.
+Exit: two weeks without an API change; every document checked against the build; James's review done; the pre-1.0 polish below complete.
 - [ ] **James's pre-1.0 review** of the API and anything he wants added before 1.0.
 - [ ] API frozen; `docs/STABILITY-1.0.md` drafted with the requirement-to-test map.
+
+## v0.9.x - Pre-1.0 polish (before any `1.0.0-rc`)
+James's standing rule (2026-10-29): "make sure to go back and fix any issues / perf tune / etc before we get close to release." Nothing accepted earlier in the series becomes final silently. This milestone runs inside 0.9.x and must be complete before the first `1.0.0-rc`; whatever is still open afterwards goes, with its reason and numbers, into the 1.0 readiness note for James (`docs/STABILITY-1.0.md`, section "Open items").
+Exit: every item below is fixed, or measured again and listed in the readiness note with its reason; the performance pass and the security and `unsafe` review are recorded with dates, hardware, and results.
+- [ ] **Revisit every accepted gap, deferred item, known issue, and missed target.** The list as of 2026-10-29 (add to it as the series goes; `PLAN.md` decision log is the source):
+  - D-022: `{:#}` was 2.0 times slower than anyhow at 0.3 (the de-duplication buffer). Target: at least level with anyhow.
+  - B13: `{:?}` was 16% slower than anyhow at 0.3 (within the 20% allowed, but recorded). Re-measure and tune.
+  - D-011: the hand-written `source()` walk. Met at 0.3 (level at one layer, 11% to 18% faster from three); re-measure on Linux and aarch64 and keep the within-5% target as a regression gate.
+  - D-020: the chain has no repeat check, only the 128-link budget. Look again for a deterministic way to stop a cycle early.
+  - D-021: compile-fail cases are doc tests, not trybuild (no checked error text). Decide whether the messages themselves need a check.
+  - D-024: what Miri does not run (doc tests, the allocation-count binary, file-reading tests). Find another way to cover each, or record why none is needed.
+  - D-026: a boxed root answers `downcast_ref` only as `Box<dyn Error>`. Revisit once the API is otherwise frozen.
+  - D-027 (`Trace:` printed only when the error travelled) and D-028 (`None` with a section becomes `no value`): confirm with real use from the 0.8 migrations.
+  - RD-14 (one-allocation formatted messages, decided at 0.6), and every 11.1 target that 0.6 recorded as missed or as an exception.
+  - Every edge case or threat test that a version marked as partial or skipped.
+- [ ] **Fresh performance tuning pass** over every benchmark of `PLAN.md` 11.1 against anyhow, eyre, and error-stack, on Windows, Linux, and aarch64, with criterion baselines refreshed; each regression or missed target fixed or listed.
+- [ ] **Security and `unsafe` review, again**: `src/raw.rs` line by line against `docs/UNSAFE.md` (every `SAFETY:` comment still true, I-1 to I-13 and any later invariant still tested), Miri under both models and AddressSanitizer on the whole suite, fuzzing re-run, and every threat T1 to T16 re-checked against the code as it stands.
+- [ ] The 1.0 readiness note lists every item still open, with its numbers and reason, for James's decision.
 
 ## v1.0.0 - Stable
 Exit: the audit passes, the definition of done in `DIRECTIVES.md` and `PLAN.md` section 16 holds, and James approves.
