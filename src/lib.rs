@@ -120,9 +120,13 @@ compile_error!(
      targets without it (such as thumbv6m-none-eabi) are not supported"
 );
 
+mod attach;
 mod chain;
 mod context;
 mod error;
+#[cfg(feature = "std")]
+mod exit;
+mod ext;
 mod format;
 mod frame;
 mod limits;
@@ -130,13 +134,20 @@ mod macros;
 #[allow(unsafe_code)]
 mod raw;
 mod std_interop;
+mod trace;
 
 #[doc(hidden)]
 pub mod __private;
 
+pub use crate::attach::{Attachments, Section, Sections};
 pub use crate::chain::Chain;
 pub use crate::context::Context;
 pub use crate::error::Error;
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+pub use crate::exit::ExitReport;
+pub use crate::ext::SectionKind;
+pub use crate::trace::{Step, StepKind, Trail};
 
 /// `Result<T, Error>`, with `Error` as the default error type, so
 /// `Result<T>` reads like anyhow's. `Result<T, MyError>` still works.
@@ -148,6 +159,22 @@ pub use crate::error::Error;
 /// assert_eq!(parse(" 7 ").unwrap(), 7);
 /// ```
 pub type Result<T, E = Error> = core::result::Result<T, E>;
+
+/// `Ok(value)` as a `Result<T>`, for closures and blocks whose error type
+/// cannot be inferred (anyhow's helper). Not in the prelude: a glob import
+/// would shadow `Result::Ok` in patterns.
+///
+/// ```
+/// let doubled = (|| {
+///     let n: u32 = "7".parse()?;
+///     report_err::Ok(n * 2)
+/// })();
+/// assert_eq!(doubled.ok(), Some(14));
+/// ```
+#[allow(non_snake_case)]
+pub fn Ok<T>(value: T) -> Result<T> {
+    core::result::Result::Ok(value)
+}
 
 /// The Tier 1 names in one import: `Error`, `Result`, `Context`, `err!`,
 /// `bail!`, `ensure!`.

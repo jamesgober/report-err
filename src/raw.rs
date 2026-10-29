@@ -23,6 +23,7 @@ use core::mem::{ManuallyDrop, MaybeUninit};
 use core::panic::Location;
 use core::ptr::{self, addr_of, addr_of_mut, NonNull};
 
+use crate::ext::Extras;
 use crate::frame::FrameValue;
 
 /// The trait object every layer of an error is seen as.
@@ -77,6 +78,9 @@ struct Ext {
     inline: [MaybeUninit<Frame>; INLINE],
     /// Layers 6 and up, innermost first.
     spill: Vec<Frame>,
+    /// Attachments, sections, trace points, and the rest (safe data; reached
+    /// by projection to this field only, I-13).
+    extras: Extras,
 }
 
 /// One context layer.
@@ -315,6 +319,31 @@ impl RawError {
         self.header().frames as usize
     }
 
+    /// Context layers added in all, including those a budget dropped.
+    pub(crate) fn pushed(&self) -> u32 {
+        u32::from(self.header().frames).saturating_add(self.header().omitted)
+    }
+
+    /// The extension block's extras, if the block exists.
+    pub(crate) fn extras(&self) -> Option<&Extras> {
+        let ext = self.header().ext?;
+        // SAFETY: I-3, I-13: a projection to the `extras` field of a live block.
+        let field = unsafe { addr_of!((*ext.as_ptr()).extras) };
+        // SAFETY: the field is initialised; the reference covers it only and
+        // lives as long as `&self`.
+        Some(unsafe { &*field })
+    }
+
+    /// The extras, allocating the extension block on first use.
+    pub(crate) fn extras_mut(&mut self) -> &mut Extras {
+        let ext = self.ext_or_alloc();
+        // SAFETY: I-3, I-13: a projection to the `extras` field of a live block.
+        let field = unsafe { addr_of_mut!((*ext.as_ptr()).extras) };
+        // SAFETY: I-8: unique access through `&mut self`; the reference covers
+        // the field only.
+        unsafe { &mut *field }
+    }
+
     /// Whether any layer holds a value other than a string.
     pub(crate) fn has_value_frames(&self) -> bool {
         self.header().values > 0
@@ -502,6 +531,7 @@ impl RawError {
                 MaybeUninit::uninit(),
             ],
             spill: Vec::new(),
+            extras: Extras::default(),
         };
         let ext = NonNull::from(Box::leak(Box::new(block)));
         self.header_mut().ext = Some(ext);

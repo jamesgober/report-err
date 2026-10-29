@@ -48,7 +48,18 @@ unsafe impl GlobalAlloc for Counting {
 static ALLOCATOR: Counting = Counting;
 
 /// Runs `f` and returns its value with the allocations and frees it made.
+///
+/// The first backtrace check in a process reads the environment once; it is
+/// done here, outside the counted region. Backtraces must be off: with them
+/// on, every new error also captures one, which is a different contract.
 fn counted<R>(f: impl FnOnce() -> R) -> (R, usize, usize) {
+    let backtrace = std::backtrace::Backtrace::capture();
+    assert_ne!(
+        backtrace.status(),
+        std::backtrace::BacktraceStatus::Captured,
+        "unset RUST_BACKTRACE (or set RUST_LIB_BACKTRACE=0) to run the allocation tests"
+    );
+    drop(backtrace);
     let a = ALLOCS.with(Cell::get);
     let d = FREES.with(Cell::get);
     let r = f();

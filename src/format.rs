@@ -6,6 +6,8 @@ use core::fmt::{self, Debug, Display, Write};
 
 use crate::chain::Link;
 use crate::error::Error;
+use crate::ext::ShowAttachment;
+use crate::trace::StepKind;
 
 /// Bytes of a formatted link kept for the de-duplication check. A string the
 /// error holds itself (a string context layer, a message root) is compared
@@ -205,6 +207,14 @@ impl Debug for Error {
 
 /// `{:?}`: the report (anyhow's layout first, then report-err's blocks).
 fn write_report(error: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    report(error, f, false)
+}
+
+/// Writes the report to `out`. With `escape`, the form `ExitReport` prints
+/// to a terminal: control characters in any message become `\u{..}` text
+/// and a message's continuation lines are indented, so no message can move
+/// the cursor or start a line that looks like a block of the report (T6).
+pub(crate) fn report(error: &Error, out: &mut dyn Write, escape: bool) -> fmt::Result {
     // First pass: which causes repeat the link before them (bit n: cause n,
     // the link after the outermost one, is skipped). The chain holds at most
     // 128 links, so 127 causes.
@@ -231,13 +241,10 @@ fn write_report(error: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 
     let mut chain = error.chain();
     if let Some(outer) = chain.next_link() {
-        match outer.text {
-            Some(text) => f.write_str(text)?,
-            None => write!(f, "{}", outer.error)?,
-        }
+        message(out, escape, "    ", &LinkText(&outer))?;
     }
     if printed > 0 {
-        f.write_str("\n\nCaused by:")?;
+        out.write_str("\n\nCaused by:")?;
         let mut number = 0usize;
         let mut n = 0usize;
         while let Some(link) = chain.next_link() {
@@ -246,31 +253,186 @@ fn write_report(error: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             if skipped {
                 continue;
             }
-            f.write_str("\n")?;
-            let mut out = Indented {
-                inner: f,
+            out.write_str("\n")?;
+            let mut indented = Indented {
+                inner: out,
                 number: (printed > 1).then_some(number),
                 started: false,
             };
-            match link.text {
-                Some(text) => out.write_str(text)?,
-                None => write!(out, "{}", link.error)?,
-            }
+            message(&mut indented, escape, "", &LinkText(&link))?;
             number += 1;
         }
     } else {
         while chain.next_link().is_some() {}
     }
     if chain.truncated() {
-        f.write_str("\n    (chain truncated)")?;
+        out.write_str("\n    (chain truncated)")?;
     }
-    write!(f, "\n\nLocation: {}", error.location())?;
-    let omitted = error.omitted_frames();
-    if omitted > 0 {
-        let noun = if omitted == 1 { "layer" } else { "layers" };
-        write!(f, "\nOmitted: {omitted} context {noun} (frame budget)")?;
+
+    let extras = error.raw.extras();
+    if let Some(extras) = extras.filter(|e| !e.sections.is_empty()) {
+        out.write_str("\n")?;
+        for section in &extras.sections {
+            write!(out, "\n{}: ", section.kind.label())?;
+            message(out, escape, "    ", &section.text)?;
+        }
+    }
+
+    write!(out, "\n\nLocation: {}", error.location())?;
+
+    let origin = error.location();
+    if error.trail().any(|step| step.location != origin) {
+        out.write_str("\nTrace:")?;
+        for (n, step) in error.trail().enumerate() {
+            write!(out, "\n{n: >5}: {}  ", step.location)?;
+            match (step.kind, step.context) {
+                (StepKind::Origin, _) => out.write_str("(origin)")?,
+                (StepKind::Context, Some(layer)) => {
+                    message(out, escape, "         ", &format_args!("{layer}"))?
+                }
+                _ => out.write_str("(trace)")?,
+            }
+        }
+    }
+
+    if let Some(extras) = extras {
+        let mut shown = extras
+            .attachments
+            .iter()
+            .filter(|a| a.display.is_some())
+            .peekable();
+        if shown.peek().is_some() {
+            out.write_str("\nAttachments:")?;
+            for attachment in shown {
+                out.write_str("\n    ")?;
+                message(out, escape, "    ", &ShowAttachment(attachment))?;
+            }
+        }
+    }
+
+    let omitted = Omitted::of(error);
+    if omitted.any() {
+        write!(out, "\nOmitted: {omitted}")?;
+    }
+
+    #[cfg(feature = "std")]
+    if let Some(backtrace) = error.backtrace() {
+        write!(out, "\n\nBacktrace:\n{backtrace}")?;
     }
     Ok(())
+}
+
+/// A link's text: the string the error holds, or the link's `Display`.
+struct LinkText<'a, 'b>(&'a Link<'b>);
+
+impl Display for LinkText<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.text {
+            Some(text) => f.write_str(text),
+            None => write!(f, "{}", self.0.error),
+        }
+    }
+}
+
+/// Writes one message, escaped when the report goes to a terminal.
+fn message(
+    out: &mut dyn Write,
+    escape: bool,
+    indent: &'static str,
+    text: &dyn Display,
+) -> fmt::Result {
+    if escape {
+        write!(Escaped { inner: out, indent }, "{text}")
+    } else {
+        write!(out, "{text}")
+    }
+}
+
+/// Escapes terminal control characters (C0 except newline and tab, DEL, C1)
+/// and Unicode bidirectional controls as `\u{..}` text, and indents
+/// each continuation line by `indent`.
+struct Escaped<'a> {
+    inner: &'a mut dyn Write,
+    indent: &'static str,
+}
+
+impl Write for Escaped<'_> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        for c in s.chars() {
+            match c {
+                '\n' => {
+                    self.inner.write_char('\n')?;
+                    self.inner.write_str(self.indent)?;
+                }
+                '\t' => self.inner.write_char('\t')?,
+                c if c.is_control() || is_bidi_control(c) => {
+                    write!(self.inner, "\\u{{{:x}}}", u32::from(c))?
+                }
+                c => self.inner.write_char(c)?,
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The bidirectional embedding, override, and isolate controls, which make a
+/// terminal show the rest of a line in another order (PLAN 19, 0.4).
+fn is_bidi_control(c: char) -> bool {
+    matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+}
+
+/// What the budgets dropped, for the `Omitted:` line.
+struct Omitted {
+    frames: u32,
+    attachments: u32,
+    sections: u32,
+    points: u32,
+    texts: u32,
+}
+
+impl Omitted {
+    fn of(error: &Error) -> Omitted {
+        let extras = error.raw.extras();
+        Omitted {
+            frames: error.omitted_frames(),
+            attachments: extras.map_or(0, |e| e.omitted.attachments),
+            sections: extras.map_or(0, |e| e.omitted.sections),
+            points: extras.map_or(0, |e| e.trace.dropped()),
+            texts: extras.map_or(0, |e| e.omitted.truncated_text),
+        }
+    }
+
+    fn any(&self) -> bool {
+        self.frames > 0
+            || self.attachments > 0
+            || self.sections > 0
+            || self.points > 0
+            || self.texts > 0
+    }
+}
+
+impl Display for Omitted {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let parts = [
+            (self.frames, "context layer", "context layers"),
+            (self.attachments, "attachment", "attachments"),
+            (self.sections, "section", "sections"),
+            (self.points, "trace point", "trace points"),
+            (self.texts, "text cut", "texts cut"),
+        ];
+        let mut first = true;
+        for (count, one, many) in parts {
+            if count == 0 {
+                continue;
+            }
+            if !first {
+                f.write_str(", ")?;
+            }
+            first = false;
+            write!(f, "{count} {}", if count == 1 { one } else { many })?;
+        }
+        f.write_str(" (budget)")
+    }
 }
 
 /// `{:#?}`: the parts of the error, for developers.
@@ -343,13 +505,13 @@ impl Write for Escape<'_, '_> {
 
 /// Indents every line of a cause under `Caused by:`, numbered when there is
 /// more than one (anyhow's layout).
-struct Indented<'a, 'b> {
-    inner: &'a mut fmt::Formatter<'b>,
+struct Indented<'a> {
+    inner: &'a mut dyn Write,
     number: Option<usize>,
     started: bool,
 }
 
-impl Write for Indented<'_, '_> {
+impl Write for Indented<'_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for (i, line) in s.split('\n').enumerate() {
             if !self.started {
@@ -432,6 +594,22 @@ mod tests {
         assert_eq!(format!("{error:#}"), "disk full: full");
     }
 
+    /// The report up to and including its `Location:` line.
+    fn head(report: &str) -> &str {
+        let at = report
+            .find(
+                "
+
+Location: ",
+            )
+            .map_or(report.len(), |i| {
+                i + report[i + 2..]
+                    .find('\n')
+                    .map_or(report.len() - i, |j| j + 2)
+            });
+        &report[..at]
+    }
+
     #[test]
     fn test_format_report_layout() {
         let error = Error::new(Io)
@@ -439,22 +617,69 @@ mod tests {
             .context("starting server");
         let report = format!("{error:?}");
         let want = format!(
-            "starting server\n\nCaused by:\n    0: reading config\n    1: No such file or directory (os error 2)\n\nLocation: {}",
+            "starting server
+
+Caused by:
+    0: reading config
+    1: No such file or directory (os error 2)
+
+Location: {}",
             error.location()
         );
-        assert_eq!(report, want);
+        assert_eq!(head(&report), want);
+        // The layers were added at other columns than the origin, so the
+        // trail is printed.
+        assert!(
+            report.contains(
+                "
+Trace:
+    0: "
+            ),
+            "{report}"
+        );
+        assert!(
+            report.contains(
+                "  (origin)
+    1: "
+            ),
+            "{report}"
+        );
+        assert!(report.ends_with("  starting server"), "{report}");
 
         let error = Error::new(Io).context("reading config");
         let want = format!(
-            "reading config\n\nCaused by:\n    No such file or directory (os error 2)\n\nLocation: {}",
+            "reading config
+
+Caused by:
+    No such file or directory (os error 2)
+
+Location: {}",
             error.location()
         );
-        assert_eq!(format!("{error:?}"), want);
+        assert_eq!(head(&format!("{error:?}")), want);
 
         let error = Error::msg("alone");
         assert_eq!(
             format!("{error:?}"),
-            format!("alone\n\nLocation: {}", error.location())
+            format!(
+                "alone
+
+Location: {}",
+                error.location()
+            )
+        );
+    }
+
+    #[test]
+    fn test_format_report_trace_only_when_the_error_travelled() {
+        fn at_one_call() -> crate::Result<()> {
+            let r: core::result::Result<(), Io> = Err(Io);
+            crate::Context::context(r, "reading")
+        }
+        let error = at_one_call().unwrap_err();
+        assert!(
+            !format!("{error:?}").contains("Trace:"),
+            "origin and layer share one location"
         );
     }
 
@@ -462,10 +687,15 @@ mod tests {
     fn test_format_report_skips_repeats_and_renumbers() {
         let error = Error::new(Repeats(Io)).context("loading");
         let want = format!(
-            "loading\n\nCaused by:\n    io error: No such file or directory (os error 2)\n\nLocation: {}",
+            "loading
+
+Caused by:
+    io error: No such file or directory (os error 2)
+
+Location: {}",
             error.location()
         );
-        assert_eq!(format!("{error:?}"), want);
+        assert_eq!(head(&format!("{error:?}")), want);
     }
 
     #[test]

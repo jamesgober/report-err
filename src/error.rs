@@ -66,6 +66,7 @@ impl Error {
         Error {
             raw: RawError::from_error(error, Location::caller()),
         }
+        .capture_backtrace()
     }
 
     /// Makes an error from a message. The message stays downcastable as its
@@ -83,6 +84,7 @@ impl Error {
         Error {
             raw: RawError::from_message(message, Location::caller()),
         }
+        .capture_backtrace()
     }
 
     /// An error whose root is a `Display`-only message (context on `None`).
@@ -94,6 +96,7 @@ impl Error {
         Error {
             raw: RawError::from_display(message, Location::caller()),
         }
+        .capture_backtrace()
     }
 
     /// An error value with its first context layer, in one allocation.
@@ -106,7 +109,7 @@ impl Error {
         let location = Location::caller();
         let mut raw = RawError::from_error(error, location);
         raw.push_frame(location, FrameValue::new(context), limits::MAX_FRAMES);
-        Error { raw }
+        Error { raw }.capture_backtrace()
     }
 
     /// Adds a layer of context: `context` becomes the outermost message and
@@ -310,6 +313,32 @@ impl Error {
         }
     }
 
+    /// The exit code `main` ends with when it returns this error through
+    /// `ExitReport` (feature `std`): an explicit
+    /// [`with_exit_code`](Error::with_exit_code), otherwise 1 (what anyhow
+    /// users get today).
+    ///
+    /// ```
+    /// let error = report_err::err!("usage: tool <file>");
+    /// assert_eq!(error.exit_code(), 1);
+    /// assert_eq!(error.with_exit_code(64).exit_code(), 64);
+    /// ```
+    #[must_use]
+    pub fn exit_code(&self) -> u8 {
+        self.raw.extras().and_then(|e| e.exit).unwrap_or(1)
+    }
+
+    /// Sets the exit code. 0 is not a failure code and becomes 1.
+    ///
+    /// ```
+    /// let error = report_err::err!("x").with_exit_code(0);
+    /// assert_eq!(error.exit_code(), 1);
+    /// ```
+    pub fn with_exit_code(mut self, code: u8) -> Error {
+        self.raw.extras_mut().exit = Some(code.max(1));
+        self
+    }
+
     /// The number of context layers dropped at the frame budget.
     pub(crate) fn omitted_frames(&self) -> u32 {
         self.raw.omitted()
@@ -365,6 +394,10 @@ pub trait IntoErrorWithContext: crate::context::private::SealedError {
     fn into_error_with<C>(self, context: C) -> Error
     where
         C: Display + Send + Sync + 'static;
+
+    #[doc(hidden)]
+    #[track_caller]
+    fn into_error(self) -> Error;
 }
 
 impl<E> IntoErrorWithContext for E
@@ -378,6 +411,11 @@ where
     {
         Error::with_first_context(self, context)
     }
+
+    #[track_caller]
+    fn into_error(self) -> Error {
+        Error::new(self)
+    }
 }
 
 impl IntoErrorWithContext for Error {
@@ -387,6 +425,10 @@ impl IntoErrorWithContext for Error {
         C: Display + Send + Sync + 'static,
     {
         self.context(context)
+    }
+
+    fn into_error(self) -> Error {
+        self
     }
 }
 

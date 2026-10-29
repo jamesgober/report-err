@@ -164,7 +164,7 @@ fn test_context_layer_counts_inline_spill_and_budget() {
         error = error.context(format!("l{i}"));
     }
     assert_eq!(error.chain().len(), 65, "64 layers kept and the root");
-    assert!(format!("{error:?}").contains("Omitted: 1 context layer (frame budget)"));
+    assert!(format!("{error:?}").contains("Omitted: 1 context layer (budget)"));
 }
 
 #[test]
@@ -375,13 +375,15 @@ fn test_format_report_golden() {
     let io_text = io::Error::from(io::ErrorKind::NotFound).to_string();
     let os_text = error.root_cause().to_string();
     assert!(!io_text.is_empty());
-    assert_eq!(
-        format!("{error:?}"),
-        format!(
-            "starting server\n\nCaused by:\n    0: reading config\n    1: {os_text}\n\nLocation: {}",
-            error.location()
-        )
+    let report = format!("{error:?}");
+    let want = format!(
+        "starting server\n\nCaused by:\n    0: reading config\n    1: {os_text}\n\nLocation: {}\nTrace:\n    0: {}  (origin)\n    1: {}  reading config\n    2: {}  starting server",
+        error.location(),
+        error.location(),
+        error.trail().nth(1).map(|s| s.location).unwrap(),
+        error.trail().nth(2).map(|s| s.location).unwrap(),
     );
+    assert_eq!(report, want);
     assert_eq!(
         format!("{error:#}"),
         format!("starting server: reading config: {os_text}")
@@ -398,13 +400,12 @@ fn test_format_report_golden() {
 #[test]
 fn test_format_multi_line_causes_are_indented() {
     let error = Error::msg("first\nsecond").context("top");
-    assert_eq!(
-        format!("{error:?}"),
-        format!(
-            "top\n\nCaused by:\n    first\n    second\n\nLocation: {}",
-            error.location()
-        )
+    let report = format!("{error:?}");
+    let want = format!(
+        "top\n\nCaused by:\n    first\n    second\n\nLocation: {}",
+        error.location()
     );
+    assert!(report.starts_with(&want), "{report}");
 }
 
 #[test]
@@ -428,10 +429,7 @@ fn test_attack_million_layers_stay_bounded() {
     assert_eq!(error.chain().len(), 65);
     let report = format!("{error:?}");
     assert!(
-        report.contains(&format!(
-            "Omitted: {} context layers (frame budget)",
-            layers - 64
-        )),
+        report.contains(&format!("Omitted: {} context layers (budget)", layers - 64)),
         "{report}"
     );
     // The innermost eight and the newest survive.
