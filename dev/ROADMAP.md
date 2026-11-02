@@ -56,6 +56,7 @@ Exit: every `PLAN.md` 11.1 target measured; each met or its reason recorded and 
 - [ ] Benchmarks B1 to B18 against anyhow, eyre, error-stack, and `Box<dyn Error>` on Windows, Linux, and aarch64.
 - [ ] RD-14 decided with numbers; the success-path finding re-measured on aarch64.
 - [ ] `docs/PERFORMANCE.md`; criterion baselines; the 5% regression gate.
+- [ ] From 0.4.0 (D-038), on a quiet machine: B6 against its within-5% target, B9 (drop) against its 0.3.0 lead, and B13 against an allowance re-set for a report of equal content; B12 (D-022) as before.
 
 ## v0.7.0 - Hardening
 Exit: no open finding; every threat has a passing attack test.

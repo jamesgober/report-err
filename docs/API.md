@@ -375,7 +375,7 @@ impl Error {
 
 Context layers never carry a code; children are not consulted (a group has its own code or none). `Display` of an error is a private message for logs; `public_message` and the category are the only parts meant for a client.
 
-Cost [est.]: `code` under 60 ns for a five-link chain (define-err's probe, about 10 ns per generated link); `coded`, `with_severity`, `with_kind` one store.
+Cost: `code` set by hand under 1 ns; `code` found under three contexts 44 to 80 ns [measured on a loaded machine, 0.4.0]; `coded`, `with_severity`, and `with_exit_code` one store; the first `with_kind` allocates the extension block if there is none.
 
 ```rust
 use report_err::{bail, Context, Result};

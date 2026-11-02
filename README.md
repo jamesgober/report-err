@@ -147,7 +147,7 @@ The rules, a find-and-replace pass, the few differences, and a worked migration 
 
 ## How it compares
 
-Measured with criterion against anyhow 1.0.104 on the same machine (Windows 11, AMD Ryzen 9 9950X3D, system allocator; details and every figure in [`dev/PLAN.md`](./dev/PLAN.md) section 11.4):
+Measured at `0.3.0` with criterion against anyhow 1.0.104 on the same machine (Windows 11, AMD Ryzen 9 9950X3D, system allocator; details and every figure in [`dev/PLAN.md`](./dev/PLAN.md) section 11.4):
 
 | | report-err | anyhow |
 |---|---|---|
@@ -161,12 +161,12 @@ Measured with criterion against anyhow 1.0.104 on the same machine (Windows 11, 
 
 `{:#}` is slower because report-err skips a layer whose text the layer before it already printed, which needs that text before printing; the 0.6 optimisation milestone revisits it.
 
+A `0.4.0` run, on a machine too busy to give absolute figures, kept the leads on context, deep errors, and `downcast_ref`. Creating a plain error is now level with anyhow rather than ahead, because report-err makes the same backtrace check; `{:?}` is 27% slower because the report prints a `Trace:` block anyhow has no equivalent for. The drop comparison was too noisy to read. The 0.6 milestone measures all of it again on a quiet machine.
+
 ## What is coming
 
 | What | Version |
 |---|---|
-| Error codes, severity, and category through define-err; `ExitReport` with exit codes from the category | `0.4.0` |
-| Propagation trace, lazy backtraces, typed attachments, notes, warnings, suggestions | `0.4.0` |
 | Several causes, `collect_all()`, `split`, `flatten`, suppressed errors, `with_cleanup` | `0.5.0` |
 | Panic boundary, creation hook, reporting through define-err's facade, budgets on every growable part | `0.5.0` |
 

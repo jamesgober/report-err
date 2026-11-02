@@ -1646,6 +1646,26 @@ Where a target says "within 5%" the standard's 20% bar cannot be met by design, 
 
 B3 to B6 are each one allocation in both libraries; report-err's lead there comes from anyhow's backtrace-status check on every creation (report-err checks only when backtraces arrive, in 0.4). The 0.6 milestone re-measures all of them on Linux and aarch64 against eyre and error-stack as well (11.1).
 
+**0.4.0, against anyhow 1.0.104** (2026-11-02; same build settings; three runs of the whole suite, 2 s each, with the machine at 100% CPU from other work). Absolute times are 1.5 to 2 times the 0.3.0 figures and are not comparable with them, so the table gives the ratio report-err / anyhow, of the medians and of the minimums of the three runs:
+
+| Id | Benchmark | median | minimum | Reading |
+|---|---|---|---|---|
+| B2 | success path, 5-deep `?` chain | 0.94 | 0.94 | level |
+| B3 | create from `io::Error` through `?` | 0.97 | 0.97 | level: the 0.3.0 lead was anyhow's backtrace check, which report-err now makes too (as 0.3.0 predicted) |
+| B4 | `err!("literal")` | 1.12 | 1.05 | level to slightly behind |
+| B5 | `err!("value {x}")` | 1.06 | 1.01 | level |
+| B6 | `io_result.context("literal")?` | 1.15 | 1.20 | **misses "within 5%"**; not settled on this machine (D-038) |
+| B7 | `?` then `.context("literal")` | 0.61 | 0.58 | 1.7 times faster |
+| B8 | create plus 3 / 5 / 9 literal contexts | 0.73 / 0.54 / 0.36 | 0.71 / 0.61 / 0.34 | 1.4 to 2.9 times faster |
+| B9 | drop of an error with 3 contexts | 1.38 | 1.15 | not readable: 110 to 377 ns between runs; the 0.3.0 lead may be gone or may be noise (D-038) |
+| B10 | `downcast_ref` to the root after 3 contexts | 0.57 | 0.58 | 1.7 times faster |
+| B11 | `{}` of B8's error | 0.89 | 0.90 | 10% faster |
+| B12 | `{:#}` of B8's error | 1.60 | 1.56 | slower, the D-022 exception; better than the 2.0 of 0.3.0 |
+| B13 | `{:?}` of B8's error | 1.28 | 1.27 | **over the 20% allowed**: B8's contexts are at other locations than the root, so the report prints a four-line `Trace:` block, which anyhow has no equivalent for (D-038) |
+| - | hand-written `source()` walk, 3 / 9 layers | 1.16 / 0.75 | 1.10 / 0.83 | level, then faster |
+
+Code costs, same runs, report-err only: `err!(code, "literal")` 52 to 69 ns (B4 on the same runs: 53 to 72 ns); `code()` set by hand 0.7 ns; `code()` found under 3 contexts 44 to 80 ns; `severity()` found under 3 contexts 54 to 59 ns. Code reads are not a hot path. Before the measurement `code()` ran the full lookup, 10.9 ns set by hand, and `{:?}` paid for it on every report; it now does only what it needs.
+
 **Before any code (the design measurements of 7.4 and 7.6.1):**
 
 Measured on 2026-10-22 while writing this plan, with a stand-alone probe (no crates), `rustc 1.95.0 -C opt-level=3 -C codegen-units=1`, Windows 11 Pro, AMD Ryzen 9 9950X3D, 128 GiB, Windows system allocator. Best of 7 runs after warm-up.
@@ -2200,3 +2220,4 @@ Defence ideas are recorded as hypothesis, method, and expected cost (6.4); secti
 | D-035 | 2026-11-02 | `ConfigureError::AlreadyConfigured` has one message for every setting: `this setting was already configured; set it once, at the start of main, before other threads start` | a unit variant cannot name its setting, and a field for it would add a variant shape for one word; the caller knows which call failed |
 | D-036 | 2026-11-02 | The public message for a coded error found only by identity is the category's default, even when the variant has `#[public]`: the probe carries constants but no text (define-err's rule). A catalog or `from_info` gives the variant's text. It never falls back to any `Display` | keeps the rule that nothing private reaches a client; documented at `public_message` and `configure_catalogs`, so a service that wants its own text knows which call gives it |
 | D-037 | 2026-11-02 | `tests/catalog.rs` is a separate binary with one test, because `configure_catalogs` sets process state once; the backtrace variables are tested by re-running the test binary as a child (12.x), since std reads them once per process | keeps the unconfigured cases of `tests/codes.rs` true in any test order |
+| D-038 | 2026-11-02 | 0.4.0 ships with three benchmark rows open, each to be settled in 0.6: B13 is 27% slower than anyhow, over the 20% allowed, and the report's `Trace:` block is why, so the allowance is re-set in 0.6 against a report of equal content; B6 is 15% to 20% behind against "within 5%"; B9 was not readable. All three are re-measured on a quiet machine, and B6 and B9 are worked on if they hold up | the machine was at 100% CPU for the whole release window, and a saturated machine cannot settle a 5% target; 0.6 is the milestone that owns these targets (`ROADMAP.md`). The `Trace:` block is what the user asked the report for, so it is not cut to meet a number |
