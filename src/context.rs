@@ -3,6 +3,8 @@
 use core::convert::Infallible;
 use core::fmt::Display;
 
+use define_err::Code;
+
 use crate::error::{Error, IntoErrorWithContext};
 
 pub(crate) mod private {
@@ -75,6 +77,22 @@ pub trait Context<T, E>: private::Sealed {
     where
         C: Display + Send + Sync + 'static,
         F: FnOnce() -> C;
+    /// Sets the error's code (see [`Error::coded`]). On `None`, the error's
+    /// message is the code's catalog title when catalogs are configured,
+    /// otherwise the code itself.
+    ///
+    /// ```
+    /// use report_err::Context;
+    ///
+    /// let code = define_err::code!("USER", 4);
+    /// let found: Option<&str> = None;
+    /// let error = found.coded(code).unwrap_err();
+    /// assert_eq!(error.code(), Some(code));
+    /// assert_eq!(error.to_string(), "USER-0004");
+    /// ```
+    #[track_caller]
+    fn coded(self, code: Code) -> Result<T, Error>;
+
     /// Adds a note to the error (see [`Error::note`]). On `None`, the error's
     /// root is the message `no value`; give it a context to say what was
     /// missing.
@@ -191,6 +209,14 @@ where
             Err(error) => Err(error.into_error_with(f())),
         }
     }
+
+    #[track_caller]
+    fn coded(self, code: Code) -> Result<T, Error> {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_error().coded(code)),
+        }
+    }
     #[track_caller]
     fn note<S>(self, text: S) -> Result<T, Error>
     where
@@ -301,6 +327,14 @@ impl<T> Context<T, Infallible> for Option<T> {
         match self {
             Some(value) => Ok(value),
             None => Err(Error::from_display(f())),
+        }
+    }
+
+    #[track_caller]
+    fn coded(self, code: Code) -> Result<T, Error> {
+        match self {
+            Some(value) => Ok(value),
+            None => Err(Error::from_code(code)),
         }
     }
     #[track_caller]

@@ -73,9 +73,9 @@
 //!
 //! ## Status
 //!
-//! `0.3.0` ships the anyhow surface. Codes, attachments, sections, the
-//! propagation trace, and exit codes arrive in `0.4.0`; several causes,
-//! suppressed errors, budgets, and the panic boundary in `0.5.0`. The whole
+//! `0.4.0` ships the anyhow surface, codes, attachments, sections, the
+//! propagation trace, and exit codes. Several causes,
+//! suppressed errors, budgets, and the panic boundary arrive in `0.5.0`. The whole
 //! API, with the version each item arrives in, is in `docs/API.md` in the
 //! [repository](https://github.com/jamesgober/report-err).
 
@@ -107,8 +107,6 @@
 )]
 
 extern crate alloc;
-// define-err's types are first used in 0.4.0 (dev/PLAN.md, D-019).
-use define_err as _;
 #[cfg(feature = "std")]
 extern crate std;
 
@@ -122,6 +120,7 @@ compile_error!(
 
 mod attach;
 mod chain;
+mod codes;
 mod context;
 mod error;
 #[cfg(feature = "std")]
@@ -147,7 +146,9 @@ pub use crate::error::Error;
 #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 pub use crate::exit::ExitReport;
 pub use crate::ext::SectionKind;
+pub use crate::limits::{configure_catalogs, ConfigureError};
 pub use crate::trace::{Step, StepKind, Trail};
+pub use define_err::{Category, Code, Kinds, Severity};
 
 /// `Result<T, Error>`, with `Error` as the default error type, so
 /// `Result<T>` reads like anyhow's. `Result<T, MyError>` still works.
@@ -263,6 +264,16 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// ```compile_fail
 /// let a = report_err::err!("x");
 /// let b = a.clone();
+/// ```
+///
+/// The argument before a format string must be a define-err `Code`:
+///
+/// ```compile_fail
+/// let _ = report_err::err!("not a code", "message");
+/// ```
+///
+/// ```compile_fail
+/// let _ = report_err::err!(7, "message");
 /// ```
 #[cfg(doctest)]
 pub struct CompileFail;

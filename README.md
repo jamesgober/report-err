@@ -29,7 +29,7 @@
         <strong>MSRV is 1.81+</strong> (Rust 2021 edition). <code>no_std</code> + <code>alloc</code>; <code>std</code> on by default.
     </p>
     <blockquote>
-        <strong>Status: <code>0.3.0</code>, the anyhow surface.</strong> <code>Error</code>, <code>Result</code>, <code>Context</code>, <code>err!</code>, <code>bail!</code>, <code>ensure!</code>, downcasting, the cause chain, and the formatting rules are in. Error codes, attachments, sections, the propagation trace, and exit codes arrive in <code>0.4.0</code>; several causes, suppressed errors, budgets, and the panic boundary in <code>0.5.0</code>. The whole API, with the version each item arrives in, is in <a href="./docs/API.md"><code>docs/API.md</code></a>.
+        <strong>Status: <code>0.4.0</code>, codes and reports.</strong> The anyhow surface, plus error codes, severity, categories, and kinds from define-err; notes, warnings, and suggestions; typed attachments; a propagation trail; backtraces; and <code>ExitReport</code>, which exits with a code chosen from the error. Several causes, suppressed errors, budgets, and the panic boundary arrive in <code>0.5.0</code>. The whole API, with the version each item arrives in, is in <a href="./docs/API.md"><code>docs/API.md</code></a>.
     </blockquote>
 </div>
 
@@ -40,7 +40,7 @@
 
 ```toml
 [dependencies]
-report-err = "0.3.0"
+report-err = "0.4.0"
 ```
 
 ## Quick start
@@ -94,11 +94,51 @@ for cause in error.chain() {
 let as_std: &(dyn std::error::Error + 'static) = &*error;   // every layer is in its source() chain
 ```
 
+## Codes, notes, and exit codes
+
+Each of these costs nothing until it is used. Codes come from [define-err](https://crates.io/crates/define-err); an error with a code found anywhere in its chain has it without any extra call.
+
+```rust
+use report_err::{bail, Context, ExitReport, Result};
+
+fn load_user(id: u64) -> Result<User> {
+    let row = db.get(id).coded(DbError::NOT_FOUND)?;                // on Option or Result
+    if !row.active {
+        bail!(UserError::INACTIVE, "user {id} is inactive");
+    }
+    let user = parse(row)
+        .suggestion("run the migration tool on this table")?;       // printed in the report
+    Ok(user)
+}
+
+fn main() -> ExitReport {
+    run().into()                                                    // exits with the category's code
+}
+```
+
+```text
+Error: user 7 is inactive
+
+Code: USER-0003 (failed-precondition, severity 17)
+Location: src/users.rs:6:9
+```
+
+| Ask | Answer |
+|---|---|
+| `error.code()` | the code set by hand, else the innermost code in the chain |
+| `error.severity()`, `error.category()`, `error.kinds()` | from the code, a catalog, or an `io::Error` root |
+| `error.public_message()` | text a client may see; never taken from any `Display` |
+| `error.exit_code()` | `with_exit_code`, else the category's sysexits code, else 1 |
+| `error.attachment::<T>()` | a typed value added with `.attach(value)` |
+| `error.trail()` | where the error was made, each `.trace()`, and each context, in order |
+
+`ExitReport` escapes terminal controls and Unicode bidirectional controls in every message, so a message cannot move the cursor or fake a block of the report, and it cuts the report at 1 MiB.
+
 ## Moving from anyhow
 
 | anyhow | report-err |
 |---|---|
-| `anyhow = "1"` | `report-err = "0.3.0"` |
+| `anyhow = "1"` | `report-err = "0.4.0"` |
 | `use anyhow::{Context, Result};` | `use report_err::{Context, Result};` |
 | `anyhow::Error`, `bail!`, `ensure!`, `format_err!`, `.context`, `.chain()`, `.downcast_ref` | same names |
 | `anyhow!(...)` | `err!(...)` |

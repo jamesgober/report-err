@@ -254,3 +254,52 @@ fn test_alloc_into_std_is_one_whatever_the_depth() {
     assert_eq!(n, 0, "a box made by into_std gives the error back");
     drop(error);
 }
+
+#[test]
+fn test_alloc_codes_cost_nothing_beyond_the_error() {
+    // PLAN 7.5: the code, severity, and exit code live in the header.
+    let code = define_err::code!("APP", 1);
+    let (error, count) = allocs(|| {
+        err!("x")
+            .coded(code)
+            .with_severity(report_err::Severity::CRITICAL)
+            .with_exit_code(3)
+    });
+    assert_eq!(count, 1);
+    let (_, count) = allocs(|| {
+        (
+            error.code(),
+            error.severity(),
+            error.category(),
+            error.kinds(),
+            error.public_message(),
+            error.exit_code(),
+        )
+    });
+    assert_eq!(count, 0);
+}
+
+#[test]
+fn test_alloc_code_found_in_the_chain_reads_without_allocating() {
+    define_err::define_errors! {
+        namespace = "DB";
+        pub enum DbError {
+            #[code(1, help = "Raise the timeout.")]
+            #[category(Unavailable)]
+            Timeout => "query timed out",
+        }
+    }
+    let error = Error::new(DbError::Timeout);
+    let (code, count) = allocs(|| error.code());
+    assert!(code.is_some());
+    assert_eq!(count, 0);
+}
+
+#[test]
+fn test_alloc_first_trace_is_one_block_then_none_to_the_budget() {
+    let error = err!("x");
+    let (error, count) = allocs(|| error.trace());
+    assert_eq!(count, 1);
+    let (_, count) = allocs(|| error.trace().trace().trace());
+    assert_eq!(count, 0);
+}

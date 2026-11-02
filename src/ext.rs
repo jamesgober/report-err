@@ -163,6 +163,7 @@ impl Trace {
 /// Counts of what a budget dropped.
 #[derive(Default, Clone, Copy)]
 pub(crate) struct Omitted {
+    pub(crate) frames: u32,
     pub(crate) attachments: u32,
     pub(crate) sections: u32,
     pub(crate) truncated_text: u32,
@@ -173,7 +174,8 @@ pub(crate) struct Extras {
     pub(crate) attachments: Vec<Attachment>,
     pub(crate) sections: Vec<SectionData>,
     pub(crate) trace: Trace,
-    pub(crate) exit: Option<u8>,
+    /// Kinds added with `with_kind`.
+    pub(crate) kinds: define_err::Kinds,
     #[cfg(feature = "std")]
     pub(crate) backtrace: Option<std::backtrace::Backtrace>,
     pub(crate) omitted: Omitted,

@@ -13,6 +13,62 @@
 
 ---
 
+## [0.4.0] - 2026-11-02
+
+Codes and reports. Requires define-err 0.4.
+
+### Added
+
+- Codes: `Error::code` (set by hand, else the innermost coded error in the
+  chain, read with define-err's `innermost_code`), `Error::coded`, and
+  `Context::coded` on `Result` and `Option`. On `None`, the message is the
+  code's catalog title, or the code itself.
+- Code-first arms of `err!`, `format_err!`, `bail!`, and `ensure!`:
+  `err!(DbError::TIMEOUT, "after {ms} ms")`. A first argument that is not a
+  `Code` is a type error that says so.
+- `severity`, `category`, `kinds`, `with_severity`, `with_kind`. An
+  `io::Error` root gets its category from its kind; a defined error with no
+  code keeps its category.
+- `public_message`: the catalog entry, the `from_info` root, or the
+  category's default text; `None` without a code; never any `Display`.
+- `configure_catalogs` and `ConfigureError`: optional, once per process.
+- `Error::from_info` and `Error::info`: keeps per-value metadata the identity
+  probe cannot carry, such as a `retry_after` field.
+- `Code`, `Severity`, `Category`, and `Kinds` re-exported from define-err.
+- Attachments: `attach`, `attachment`, `attachments`, `attach_display`, up to
+  32, stored in the extension block.
+- Sections: `note`, `warning`, `suggestion`, on `Error` and on `Context`, and
+  `sections`, `Section`, `SectionKind`, up to 32 and 64 KiB in total.
+- The trail: `trace` on `Error` and `Context`, and `trail`, `Trail`, `Step`,
+  `StepKind`: the first 4 and latest 11 trace points merged with the contexts
+  in order. No allocation past the first.
+- Backtraces, captured when the error is made, as std's environment variables
+  say, and never when a context layer is added: `backtrace`.
+- `ExitReport`: `main` exits with a code chosen from the error. It escapes
+  terminal and bidirectional controls, indents a message's continuation
+  lines, cuts the report at 1 MiB, and ignores a closed or broken standard
+  error.
+- `exit_code` and `with_exit_code`: explicit, then the category's exit code,
+  then 1. 0 becomes 1.
+- `Ok`, as in anyhow.
+- The report's blocks: sections, `Code:`, `Trace:`, `Attachments:`,
+  `Omitted:`, and `Backtrace:`.
+- Examples `codes`, `exit_report`, and `attachments`.
+
+### Changed
+
+- The header is 80 bytes on 64-bit targets (from 72): it holds the code and
+  the severity and exit overrides, so setting them allocates nothing. The
+  omitted-layer count moved to the extension block. `Error` is still one word.
+- Requires define-err 0.4 (from 0.2).
+
+### Security
+
+- Invariant I-14 covers the new write-once slot; `src/raw.rs` is clean under
+  Miri with strict provenance, Stacked Borrows and Tree Borrows.
+
+---
+
 ## [0.3.0] - 2026-10-29
 
 The anyhow surface.
@@ -123,7 +179,8 @@ The scaffold and the plan. No functional code yet.
   cases, open decisions, and the decision log D-001 to D-008),
   `dev/DIRECTIVES.md`, and `dev/ROADMAP.md`.
 
-[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/jamesgober/report-err/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jamesgober/report-err/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jamesgober/report-err/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jamesgober/report-err/releases/tag/v0.1.0

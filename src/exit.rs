@@ -34,9 +34,12 @@ pub struct ExitReport {
 impl<E: Into<Error>> From<Result<(), E>> for ExitReport {
     #[track_caller]
     fn from(result: Result<(), E>) -> ExitReport {
-        ExitReport {
-            error: result.err().map(Into::into),
-        }
+        // A closure or `map(Into::into)` here would lose the caller's location.
+        let error = match result {
+            Ok(()) => None,
+            Err(error) => Some(error.into()),
+        };
+        ExitReport { error }
     }
 }
 

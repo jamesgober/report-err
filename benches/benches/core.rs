@@ -1,5 +1,5 @@
-//! report-err against anyhow on the 0.3 surface (PLAN 11.1, B2 to B13), and
-//! the per-link cost of a hand-written `source()` walk (D-011).
+//! report-err against anyhow on the 0.3 surface (PLAN 11.1, B2 to B13), the
+//! per-link cost of a hand-written `source()` walk (D-011), and what codes cost.
 //!
 //! Backtraces must be off for a fair comparison: run with `RUST_BACKTRACE`
 //! and `RUST_LIB_BACKTRACE` unset.
@@ -226,5 +226,37 @@ fn success(c: &mut Criterion) {
     g.finish();
 }
 
-criterion_group!(benches, create, context, inspect, format, success);
+define_err::define_errors! {
+    namespace = "DB";
+    pub enum DbError {
+        #[code(1, help = "Raise the timeout.")]
+        #[category(Unavailable)]
+        Timeout => "query timed out",
+    }
+}
+
+fn codes(c: &mut Criterion) {
+    let mut g = c.benchmark_group("codes");
+    let code = define_err::code!("APP", 1);
+    let found = report_err::Error::new(DbError::Timeout)
+        .context("a")
+        .context("b")
+        .context("c");
+    let set = report_err::err!("x").coded(code);
+    g.bench_function("coded literal", |b| {
+        b.iter(|| black_box(report_err::err!(black_box(code), "x")))
+    });
+    g.bench_function("code set by hand", |b| {
+        b.iter(|| black_box(black_box(&set).code()))
+    });
+    g.bench_function("code found after 3", |b| {
+        b.iter(|| black_box(black_box(&found).code()))
+    });
+    g.bench_function("severity found after 3", |b| {
+        b.iter(|| black_box(black_box(&found).severity()))
+    });
+    g.finish();
+}
+
+criterion_group!(benches, create, context, inspect, format, success, codes);
 criterion_main!(benches);

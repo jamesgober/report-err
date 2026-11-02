@@ -278,7 +278,11 @@ pub(crate) fn report(error: &Error, out: &mut dyn Write, escape: bool) -> fmt::R
         }
     }
 
-    write!(out, "\n\nLocation: {}", error.location())?;
+    out.write_str("\n\n")?;
+    if let Some(line) = error.code_line() {
+        writeln!(out, "Code: {line}")?;
+    }
+    write!(out, "Location: {}", error.location())?;
 
     let origin = error.location();
     if error.trail().any(|step| step.location != origin) {

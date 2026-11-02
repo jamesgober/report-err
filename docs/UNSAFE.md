@@ -32,21 +32,26 @@ One heap allocation per error, made with `Box::new(Node<P>)` and kept as a point
 
 ```text
  Error (8 bytes) ──▶ Node<P>, #[repr(C)]
-                     ├─ Header (first field; 72 bytes on 64-bit in 0.3)
+                     ├─ Header (first field; 80 bytes on 64-bit since 0.4)
                      │    vtable    &'static VTable          one per payload type P
                      │    origin    &'static Location        where the error was created
-                     │    ext       Option<NonNull<Ext>>     made on the second context layer
+                     │    code      Option<Code>             the code set by hand
+                     │    ext       Option<NonNull<Ext>>     made on the second context layer, or by the first
+                     │                                       attachment, section, or trace point
                      │    frames    u16                      context layers stored
                      │    values    u16                      of those, layers holding a non-string value
-                     │    omitted   u32                      layers dropped at the frame budget
+                     │    severity  Option<Severity>         the override
+                     │    exit      u8                       the override; 0 means none
                      │    first     MaybeUninit<Frame>       the innermost layer (when frames >= 1)
                      └─ payload: P                           the root error, inline
 
  Frame (40 bytes [measured]): location, value (&'static str | String | Box<dyn Display>), link
- Ext (a second allocation): inline: [MaybeUninit<Frame>; 4], spill: Vec<Frame>
+ Ext (a second allocation): inline: [MaybeUninit<Frame>; 4], spill: Vec<Frame>, extras: Extras
 ```
 
-The payload `P` is the user's error `E`, or one of three `#[repr(transparent)]` wrappers: `MessageError<M>` (`Error::msg`, `err!`), `DisplayError<M>` (context on `None`), and `BoxedError` (`from_boxed`). The vtable holds, for `P`: `drop` (frees the node as a `Node<P>`), `payload` (a `NonNull<dyn Error + Send + Sync>` to the payload, made by projecting to the field; for a boxed root, to the boxed error), `take` (moves the payload out and frees the rest), and `type_id` (the type a caller downcasts to: `M` for a message wrapper, `Box<dyn Error + Send + Sync>` for a boxed root). Code, flags, severity, and exit fields join the header in `0.4` and `0.5`.
+The payload `P` is the user's error `E`, or one of three `#[repr(transparent)]` wrappers: `MessageError<M>` (`Error::msg`, `err!`), `DisplayError<M>` (context on `None`), and `BoxedError` (`from_boxed`). The vtable holds, for `P`: `drop` (frees the node as a `Node<P>`), `payload` (a `NonNull<dyn Error + Send + Sync>` to the payload, made by projecting to the field; for a boxed root, to the boxed error), `take` (moves the payload out and frees the rest), `type_id` (the type a caller downcasts to: `M` for a message wrapper, `Box<dyn Error + Send + Sync>` for a boxed root), and `info` (for `from_info`, a `NonNull<dyn ErrorInfo>` to the payload, made the same way as `payload`; `None` for every other constructor). `Extras` is a safe struct: attachments, sections, trace points, the backtrace, the added kinds, and the budget counters. `raw` reaches it by projection only (I-13). Flags join the header in `0.5`.
+
+`WriteOnce<T>` is the process-wide slot behind `configure_catalogs` and, from `0.5`, the budgets and the reporter: an `AtomicPtr<T>` holding a box that is never freed (I-14).
 
 ## Invariants
 
@@ -67,6 +72,7 @@ Every `unsafe` block carries a `// SAFETY:` comment naming the invariant it reli
 | I-11 | A payload whose `Drop` panics: the panic propagates out of `drop(error)` like any value's, and Miri reports no use after free; the node is still freed: Miri reports neither a leak nor a use after free (0.3.0 result). | `test_raw_payload_drop_panics` (unwind builds) |
 | I-12 | Every frame's link points to the next layer inward, or, with bit 0 set, to its own node; it is derived by raw projection from the pointer that layer's allocation was made with (the node pointer, the extension block's pointer, or the spill vector's buffer pointer), never from a reference. After any move of frames (a spill reallocation, a dropped middle layer), every link from that layer outward is rewritten before `&mut` access ends. A frame never outlives the node that holds it. | `test_raw_frame_source_walks_every_layer` (0 to 20 layers), `test_raw_spill_growth_keeps_links` (100 layers), `test_raw_max_frames_drops_oldest_middle_layer`, `test_raw_remove_inline_layer_pulls_spill_frame_in` |
 | I-13 | Code reachable from `deref`, `deref_mut`, and a frame's `source()` never creates a reference covering a whole `Header`, `Node<P>`, or `Ext`; it projects to the field it reads and creates a reference only to that field or to the one frame it returns, so a `&mut` from `DerefMut` is never invalidated by a `source()` walk. | `test_raw_deref_mut_then_source_then_reuse`, `test_deref_mut_then_read_again` |
+| I-14 | A `WriteOnce` slot goes from null to one pointer once, by a compare-and-swap with release ordering, and never changes after that. The pointer comes from `Box::into_raw` of a value written before the swap and is never freed or written through, so an acquire load that sees it may hand out `&'static T`. A `set` that loses the swap still owns its box, and takes it back. | `test_raw_write_once_keeps_the_first_value`, `test_raw_write_once_one_thread_wins` |
 
 ## The `source()` chain view
 
@@ -95,3 +101,4 @@ CI runs both on every push and pull request (`cargo miri test --lib --tests`), w
 |---|---|
 | 0.2.0 | none (the module does not exist yet); this file written; the chain view prototyped and checked under Miri |
 | 0.3.0 | the module written: the node and its vtable, the three payload wrappers, the flat context store with direct links, invariants I-1 to I-13 each with a test; clean under Miri (strict provenance, Stacked Borrows and Tree Borrows) and AddressSanitizer |
+| 0.4.0 | the header holds the code, severity, and exit overrides (72 to 80 bytes; the omitted count moved to `Extras`); the vtable's `info` entry and `from_info`; `Extras` in the extension block; `WriteOnce` and invariant I-14 |

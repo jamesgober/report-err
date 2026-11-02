@@ -36,7 +36,7 @@ Moving from anyhow, eyre, or snafu's `Whatever` to report-err. For anyhow it is 
 
 | anyhow | report-err | Note |
 |---|---|---|
-| `anyhow = "1"` in `Cargo.toml` | `report-err = "0.3"` | |
+| `anyhow = "1"` in `Cargo.toml` | `report-err = "0.4"` | |
 | `use anyhow::{Context, Result};` | `use report_err::{Context, Result};` | same names |
 | `use anyhow::{anyhow, bail, ensure};` | `use report_err::{err, bail, ensure};` | `anyhow!` is `err!` |
 | `anyhow::Result<T>`, `anyhow::Error` | `report_err::Result<T>`, `report_err::Error` | same names |
@@ -61,7 +61,7 @@ s/\buse anyhow::/use report_err::/g
 s/\banyhow!(/err!(/g      (only in files that imported the macro by name)
 ```
 
-and in `Cargo.toml`, `anyhow = "..."` becomes `report-err = "0.3"`.
+and in `Cargo.toml`, `anyhow = "..."` becomes `report-err = "0.4"`.
 
 ### What behaves differently
 

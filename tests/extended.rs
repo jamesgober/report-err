@@ -233,7 +233,10 @@ fn test_ok_helper_infers_the_error_type() {
 
 #[cfg(feature = "std")]
 #[test]
-#[cfg_attr(miri, ignore = "printing a backtrace reads the current directory, which Miri isolates")]
+#[cfg_attr(
+    miri,
+    ignore = "printing a backtrace reads the current directory, which Miri isolates"
+)]
 fn test_with_backtrace_forces_one_and_keeps_the_first() {
     let error = err!("x").with_backtrace();
     let first = error.backtrace().map(|b| b as *const _);
