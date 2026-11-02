@@ -1709,7 +1709,7 @@ At the bottom of every file, named `test_<subject>_<condition>_<expected>`, cove
 | `tests/trace.rs` | 7.9, 8.11 |
 | `tests/backtrace.rs` | 7.13 (environment cases run as subprocesses) |
 | `tests/limits.rs` | every budget of 7.18 at n-1, n, n+1 |
-| `tests/exit.rs` | `ExitReport` exit codes and output, through `examples/exit_*.rs` run as subprocesses |
+| `tests/exit.rs` | `ExitReport` exit codes and output, with this test binary re-run as the child process (D-039) |
 | `tests/boundary.rs` | 7.15 |
 | `tests/hook.rs` | 7.16 with a test creation hook and a test reporter installed through L1 |
 | `tests/std_interop.rs` | `into_std`, `from_boxed`, round trips |
@@ -1890,7 +1890,7 @@ Each target runs 24 hours before 0.7 with no open finding; the corpus lives outs
 
 ### 12.8 Subprocess tests
 
-- `examples/exit_*.rs` binaries cover each exit-code row of E-93; `tests/exit.rs` runs them and checks status and stderr.
+- `tests/exit.rs` has its own `main` (`harness = false`) and re-runs itself once per exit-code row of E-93, checking status and stderr.
 - `tests/abort/` is a separate small binary crate built with `panic = "abort"` (Cargo ignores `panic` for the test profile, so the abort case needs its own binary); `tests/boundary.rs` builds and runs it and checks the abort status and `PANICS_CAUGHT == false`.
 - Backtrace environment cases (E-69, E-70) run the test binary itself as a child with the variables set.
 
@@ -2220,4 +2220,5 @@ Defence ideas are recorded as hypothesis, method, and expected cost (6.4); secti
 | D-035 | 2026-11-02 | `ConfigureError::AlreadyConfigured` has one message for every setting: `this setting was already configured; set it once, at the start of main, before other threads start` | a unit variant cannot name its setting, and a field for it would add a variant shape for one word; the caller knows which call failed |
 | D-036 | 2026-11-02 | The public message for a coded error found only by identity is the category's default, even when the variant has `#[public]`: the probe carries constants but no text (define-err's rule). A catalog or `from_info` gives the variant's text. It never falls back to any `Display` | keeps the rule that nothing private reaches a client; documented at `public_message` and `configure_catalogs`, so a service that wants its own text knows which call gives it |
 | D-037 | 2026-11-02 | `tests/catalog.rs` is a separate binary with one test, because `configure_catalogs` sets process state once; the backtrace variables are tested by re-running the test binary as a child (12.x), since std reads them once per process | keeps the unconfigured cases of `tests/codes.rs` true in any test order |
+| D-039 | 2026-11-02 | `tests/exit.rs` is `harness = false` and re-runs itself as the child, instead of running an example binary. Replaces the `examples/exit_*.rs` plan of 12.x | the AddressSanitizer job failed on the first version: `cargo test --lib --tests` does not build examples, so any partial run (`--test exit` too) had no child to run. No memory error was involved. A self-contained test runs under every invocation, and the sanitizer job now covers `ExitReport` in a real process, which an added `--examples` would have left to chance |
 | D-038 | 2026-11-02 | 0.4.0 ships with three benchmark rows open, each to be settled in 0.6: B13 is 27% slower than anyhow, over the 20% allowed, and the report's `Trace:` block is why, so the allowance is re-set in 0.6 against a report of equal content; B6 is 15% to 20% behind against "within 5%"; B9 was not readable. All three are re-measured on a quiet machine, and B6 and B9 are worked on if they hold up | the machine was at 100% CPU for the whole release window, and a saturated machine cannot settle a 5% target; 0.6 is the milestone that owns these targets (`ROADMAP.md`). The `Trace:` block is what the user asked the report for, so it is not cut to meet a number |

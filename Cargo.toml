@@ -95,8 +95,9 @@ codegen-units = 1
 panic         = "abort"
 strip         = "symbols"
 
-[[example]]
-name = "exit_cases"
+[[test]]
+name = "exit"
+harness = false
 required-features = ["std"]
 
 [[example]]
