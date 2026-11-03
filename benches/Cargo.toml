@@ -32,6 +32,10 @@ harness = false
 name = "backtrace"
 harness = false
 
+[[bench]]
+name = "rd14"
+harness = false
+
 [profile.bench]
 opt-level = 3
 lto = "fat"
