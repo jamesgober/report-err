@@ -61,7 +61,7 @@ impl Termination for ExitReport {
             full: false,
         };
         let _ = fmt::Write::write_str(&mut out, "Error: ");
-        let _ = crate::format::report(&error, &mut out, true);
+        let _ = crate::format::report(&error, &mut out, crate::format::Mode::TERMINAL);
         if out.full {
             let _ = out.inner.write_all(b"\n(report truncated)");
         }
@@ -80,6 +80,21 @@ impl fmt::Debug for ExitReport {
     }
 }
 
+/// The line `unraisable` writes when no reporter is installed: the chain,
+/// guarded and escaped, cut at `max_render`.
+pub(crate) fn unraisable_line(error: &Error) {
+    let stderr = std::io::stderr();
+    let mut out = Capped {
+        inner: stderr.lock(),
+        written: 0,
+        full: false,
+    };
+    let _ = fmt::Write::write_str(&mut out, "Error (unraisable): ");
+    let _ = crate::format::write_chain_terminal(error, &mut out);
+    let _ = out.inner.write_all(b"\n");
+    let _ = out.inner.flush();
+}
+
 /// Writes to an `io::Write` and stops at `max_render` bytes. Write failures
 /// (a closed or broken pipe) end the output quietly.
 struct Capped<W: std::io::Write> {
@@ -93,7 +108,7 @@ impl<W: std::io::Write> fmt::Write for Capped<W> {
         if self.full {
             return Ok(());
         }
-        let room = limits::MAX_RENDER.saturating_sub(self.written);
+        let room = limits::max_render().saturating_sub(self.written);
         let mut take = s.len().min(room);
         while take > 0 && !s.is_char_boundary(take) {
             take -= 1;
@@ -122,7 +137,7 @@ mod tests {
     fn test_capped_stops_at_the_budget_on_a_character_boundary() {
         let mut out = Capped {
             inner: Vec::new(),
-            written: limits::MAX_RENDER - 1,
+            written: limits::max_render() - 1,
             full: false,
         };
         out.write_str("é").ok();

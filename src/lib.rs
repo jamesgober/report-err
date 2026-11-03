@@ -73,10 +73,10 @@
 //!
 //! ## Status
 //!
-//! `0.4.0` ships the anyhow surface, codes, attachments, sections, the
-//! propagation trace, and exit codes. Several causes,
-//! suppressed errors, budgets, and the panic boundary arrive in `0.5.0`. The whole
-//! API, with the version each item arrives in, is in `docs/API.md` in the
+//! `0.5.0` is feature complete: the anyhow surface, codes, attachments,
+//! sections, the trail, exit codes, several causes, suppressed errors,
+//! budgets, the panic boundary, the creation hook, and reporting. The whole
+//! API is in `docs/API.md` in the
 //! [repository](https://github.com/jamesgober/report-err).
 
 #![doc(html_root_url = "https://docs.rs/report-err")]
@@ -128,11 +128,17 @@ mod exit;
 mod ext;
 mod format;
 mod frame;
+mod group;
+mod hook;
 mod limits;
 mod macros;
+mod panic;
 #[allow(unsafe_code)]
 mod raw;
 mod std_interop;
+#[cfg(feature = "testing")]
+#[cfg_attr(docsrs, doc(cfg(feature = "testing")))]
+pub mod testing;
 mod trace;
 
 #[doc(hidden)]
@@ -146,7 +152,14 @@ pub use crate::error::Error;
 #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
 pub use crate::exit::ExitReport;
 pub use crate::ext::SectionKind;
-pub use crate::limits::{configure_catalogs, ConfigureError};
+pub use crate::format::RenderStyle;
+pub use crate::group::{CollectAll, Errors, FindAll};
+pub use crate::hook::unraisable;
+pub use crate::limits::{configure, configure_catalogs, limits, ConfigureError, Limits};
+pub use crate::panic::PANICS_CAUGHT;
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+pub use crate::panic::{boundary, run};
 pub use crate::trace::{Step, StepKind, Trail};
 pub use define_err::{Category, Code, Kinds, Severity};
 
@@ -177,8 +190,8 @@ pub fn Ok<T>(value: T) -> Result<T> {
     core::result::Result::Ok(value)
 }
 
-/// The Tier 1 names in one import: `Error`, `Result`, `Context`, `err!`,
-/// `bail!`, `ensure!`.
+/// The Tier 1 names in one import: `Error`, `Result`, `Context`,
+/// `CollectAll`, `err!`, `bail!`, `ensure!`.
 ///
 /// ```
 /// use report_err::prelude::*;
@@ -190,7 +203,7 @@ pub fn Ok<T>(value: T) -> Result<T> {
 /// assert!(half(3).is_err());
 /// ```
 pub mod prelude {
-    pub use crate::{bail, ensure, err, Context, Error, Result};
+    pub use crate::{bail, ensure, err, CollectAll, Context, Error, Result};
 }
 
 /// Crate version string, populated by Cargo at build time.

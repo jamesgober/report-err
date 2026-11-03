@@ -7,7 +7,111 @@ use core::fmt::{self, Debug, Display, Write};
 use crate::chain::Link;
 use crate::error::Error;
 use crate::ext::ShowAttachment;
+use crate::limits::MAX_DEPTH;
 use crate::trace::StepKind;
+
+/// How a rendering treats the user's `Display` impls and the terminal.
+#[derive(Clone, Copy)]
+pub(crate) struct Mode {
+    /// Control characters escaped and continuation lines indented (T6).
+    pub(crate) escape: bool,
+    /// Each `Display` guarded: a panic prints `<display panicked>` and a
+    /// failure `<display failed>`, and the rendering goes on.
+    pub(crate) guard: bool,
+}
+
+impl Mode {
+    /// `{:?}`: as written, not guarded.
+    pub(crate) const PLAIN: Mode = Mode {
+        escape: false,
+        guard: false,
+    };
+    /// `render`, `record`, `report`: guarded.
+    pub(crate) const GUARDED: Mode = Mode {
+        escape: false,
+        guard: true,
+    };
+    /// `ExitReport` and `unraisable`: guarded and escaped for a terminal.
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
+    pub(crate) const TERMINAL: Mode = Mode {
+        escape: true,
+        guard: true,
+    };
+}
+
+/// An error as a `Display`, without trait upcasting (not on 1.81).
+pub(crate) struct ErrorText<'a>(pub(crate) &'a (dyn core::error::Error + 'static));
+
+impl Display for ErrorText<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Display::fmt(self.0, f)
+    }
+}
+
+/// A user's `Display`, written as is or guarded (`Mode::guard`).
+pub(crate) struct Shown<'a> {
+    d: &'a dyn Display,
+    guard: bool,
+}
+
+impl<'a> Shown<'a> {
+    pub(crate) fn new(d: &'a dyn Display, guard: bool) -> Shown<'a> {
+        Shown { d, guard }
+    }
+
+    pub(crate) fn guarded(d: &'a dyn Display) -> Shown<'a> {
+        Shown { d, guard: true }
+    }
+}
+
+impl Display for Shown<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if !self.guard {
+            return self.d.fmt(f);
+        }
+        let mut watch = Watch {
+            inner: f,
+            failed: false,
+        };
+        match guarded_write(&mut watch, self.d) {
+            Some(Ok(())) => Ok(()),
+            // The writer failed: pass it on.
+            Some(Err(_)) if watch.failed => Err(fmt::Error),
+            Some(Err(_)) => f.write_str("<display failed>"),
+            None => f.write_str("<display panicked>"),
+        }
+    }
+}
+
+/// Writes `d`; `None` when its `Display` panicked (with `std`).
+fn guarded_write(out: &mut dyn Write, d: &dyn Display) -> Option<fmt::Result> {
+    #[cfg(feature = "std")]
+    {
+        let call = std::panic::AssertUnwindSafe(|| write!(out, "{d}"));
+        std::panic::catch_unwind(call)
+            .map_err(crate::panic::drop_payload)
+            .ok()
+    }
+    #[cfg(not(feature = "std"))]
+    {
+        Some(write!(out, "{d}"))
+    }
+}
+
+/// Remembers whether the writer itself failed, to tell that apart from a
+/// `Display` that returned an error.
+struct Watch<'a> {
+    inner: &'a mut dyn Write,
+    failed: bool,
+}
+
+impl Write for Watch<'_> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let result = self.inner.write_str(s);
+        self.failed |= result.is_err();
+        result
+    }
+}
 
 /// Bytes of a formatted link kept for the de-duplication check. A string the
 /// error holds itself (a string context layer, a message root) is compared
@@ -89,12 +193,14 @@ enum Text<'a> {
 /// so the previous link's text is never overwritten by the current one.
 struct Buffers {
     tails: [Option<Tail>; 2],
+    guard: bool,
 }
 
 impl Buffers {
-    fn new() -> Buffers {
+    fn new(mode: Mode) -> Buffers {
         Buffers {
             tails: [None, None],
+            guard: mode.guard,
         }
     }
 
@@ -114,7 +220,7 @@ impl Buffers {
         };
         let tail = entry.get_or_insert_with(Tail::new);
         tail.len = 0;
-        write!(tail, "{}", link.error)?;
+        write!(tail, "{}", Shown::new(&ErrorText(link.error), self.guard))?;
         Ok(Text::Buf(slot))
     }
 
@@ -153,9 +259,9 @@ impl Buffers {
             Text::Str(text) => out.write_str(text),
             Text::Buf(slot) => match self.tail(slot).and_then(Tail::whole) {
                 Some(text) => out.write_str(text),
-                None => write!(out, "{}", link.error),
+                None => write!(out, "{}", Shown::new(&ErrorText(link.error), self.guard)),
             },
-            Text::None => write!(out, "{}", link.error),
+            Text::None => write!(out, "{}", Shown::new(&ErrorText(link.error), self.guard)),
         }
     }
 }
@@ -163,7 +269,7 @@ impl Buffers {
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if f.alternate() {
-            write_chain(self, f)
+            write_chain(self, f, Mode::PLAIN)
         } else {
             write!(f, "{}", &**self)
         }
@@ -171,8 +277,8 @@ impl Display for Error {
 }
 
 /// `{:#}`: every link on one line, joined by `": "`, repeats skipped.
-fn write_chain(error: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    let mut buffers = Buffers::new();
+pub(crate) fn write_chain(error: &Error, f: &mut dyn Write, mode: Mode) -> fmt::Result {
+    let mut buffers = Buffers::new(mode);
     let mut prev = Text::None;
     let mut first = true;
     let mut chain = error.chain();
@@ -207,21 +313,39 @@ impl Debug for Error {
 
 /// `{:?}`: the report (anyhow's layout first, then report-err's blocks).
 fn write_report(error: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    report(error, f, false)
+    report(error, f, Mode::PLAIN)
 }
 
-/// Writes the report to `out`. With `escape`, the form `ExitReport` prints
-/// to a terminal: control characters in any message become `\u{..}` text
-/// and a message's continuation lines are indented, so no message can move
-/// the cursor or start a line that looks like a block of the report (T6).
-pub(crate) fn report(error: &Error, out: &mut dyn Write, escape: bool) -> fmt::Result {
-    // First pass: which causes repeat the link before them (bit n: cause n,
-    // the link after the outermost one, is skipped). The chain holds at most
-    // 128 links, so 127 causes.
-    let mut skip: u128 = 0;
+/// Cause `n` is skipped as a repeat (`n` below the 4,096 links `max_chain`
+/// allows).
+struct Skips([u64; 64]);
+
+impl Skips {
+    fn set(&mut self, n: usize) {
+        if let Some(word) = self.0.get_mut(n / 64) {
+            *word |= 1 << (n % 64);
+        }
+    }
+
+    fn get(&self, n: usize) -> bool {
+        self.0
+            .get(n / 64)
+            .is_some_and(|word| word & (1 << (n % 64)) != 0)
+    }
+}
+
+/// Writes the report to `out`. With `mode.escape`, the form `ExitReport`
+/// prints to a terminal: control characters in any message become `\u{..}`
+/// text and a message's continuation lines are indented, so no message can
+/// move the cursor or start a line that looks like a block of the report
+/// (T6). With `mode.guard`, no `Display` can stop it (see `Shown`).
+pub(crate) fn report(error: &Error, out: &mut dyn Write, mode: Mode) -> fmt::Result {
+    // First pass: which causes repeat the link before them (cause n is the
+    // link after the outermost one).
+    let mut skip = Skips([0; 64]);
     let mut printed = 0usize;
     {
-        let mut buffers = Buffers::new();
+        let mut buffers = Buffers::new(mode);
         let mut prev = Text::None;
         let mut chain = error.chain();
         let mut n = 0usize;
@@ -229,7 +353,7 @@ pub(crate) fn report(error: &Error, out: &mut dyn Write, escape: bool) -> fmt::R
             let cur = buffers.capture(&link, prev)?;
             if n > 0 {
                 if buffers.repeats(prev, cur) {
-                    skip |= 1u128 << ((n - 1) % 128);
+                    skip.set(n - 1);
                 } else {
                     printed += 1;
                 }
@@ -241,14 +365,14 @@ pub(crate) fn report(error: &Error, out: &mut dyn Write, escape: bool) -> fmt::R
 
     let mut chain = error.chain();
     if let Some(outer) = chain.next_link() {
-        message(out, escape, "    ", &LinkText(&outer))?;
+        message(out, mode, "    ", &LinkText(&outer))?;
     }
     if printed > 0 {
         out.write_str("\n\nCaused by:")?;
         let mut number = 0usize;
         let mut n = 0usize;
         while let Some(link) = chain.next_link() {
-            let skipped = skip & (1u128 << (n % 128)) != 0;
+            let skipped = skip.get(n);
             n += 1;
             if skipped {
                 continue;
@@ -259,7 +383,7 @@ pub(crate) fn report(error: &Error, out: &mut dyn Write, escape: bool) -> fmt::R
                 number: (printed > 1).then_some(number),
                 started: false,
             };
-            message(&mut indented, escape, "", &LinkText(&link))?;
+            message(&mut indented, mode, "", &LinkText(&link))?;
             number += 1;
         }
     } else {
@@ -269,12 +393,23 @@ pub(crate) fn report(error: &Error, out: &mut dyn Write, escape: bool) -> fmt::R
         out.write_str("\n    (chain truncated)")?;
     }
 
+    write_causes(error, out, mode)?;
+
     let extras = error.raw.extras();
     if let Some(extras) = extras.filter(|e| !e.sections.is_empty()) {
         out.write_str("\n")?;
         for section in &extras.sections {
             write!(out, "\n{}: ", section.kind.label())?;
-            message(out, escape, "    ", &section.text)?;
+            message(out, mode, "    ", &section.text)?;
+        }
+    }
+
+    let suppressed = error.suppressed();
+    if !suppressed.is_empty() {
+        out.write_str("\n\nSuppressed:")?;
+        for other in suppressed {
+            out.write_str("\n    ")?;
+            one_line(out, mode, "    ", other)?;
         }
     }
 
@@ -292,7 +427,7 @@ pub(crate) fn report(error: &Error, out: &mut dyn Write, escape: bool) -> fmt::R
             match (step.kind, step.context) {
                 (StepKind::Origin, _) => out.write_str("(origin)")?,
                 (StepKind::Context, Some(layer)) => {
-                    message(out, escape, "         ", &format_args!("{layer}"))?
+                    message(out, mode, "         ", &format_args!("{layer}"))?
                 }
                 _ => out.write_str("(trace)")?,
             }
@@ -309,7 +444,14 @@ pub(crate) fn report(error: &Error, out: &mut dyn Write, escape: bool) -> fmt::R
             out.write_str("\nAttachments:")?;
             for attachment in shown {
                 out.write_str("\n    ")?;
-                message(out, escape, "    ", &ShowAttachment(attachment))?;
+                message(out, mode, "    ", &ShowAttachment(attachment))?;
+            }
+        }
+        if !extras.fields.is_empty() {
+            out.write_str("\nFields:")?;
+            for (key, value) in &extras.fields {
+                write!(out, "\n    {key} = ")?;
+                message(out, mode, "    ", value)?;
             }
         }
     }
@@ -326,6 +468,103 @@ pub(crate) fn report(error: &Error, out: &mut dyn Write, escape: bool) -> fmt::R
     Ok(())
 }
 
+/// Which form [`Error::render`] writes.
+///
+/// ```
+/// use report_err::RenderStyle;
+///
+/// let error = report_err::err!("x").context("y");
+/// let mut text = String::new();
+/// error.render(&mut text, RenderStyle::Chain).unwrap();
+/// assert_eq!(text, "y: x");
+/// ```
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[non_exhaustive]
+pub enum RenderStyle {
+    /// The outermost message, as `{}`.
+    Message,
+    /// The chain on one line, as `{:#}`.
+    Chain,
+    /// The report, as `{:?}`.
+    Report,
+}
+
+impl Error {
+    /// Writes `{}`, `{:#}`, or `{:?}` in a form that cannot fail on the
+    /// error's account, for code that must not fail while it prints an error
+    /// (a panic hook, a crash path).
+    ///
+    /// Each `Display` is guarded: one that panics (with `std` and unwinding)
+    /// prints `<display panicked>`, one that fails prints
+    /// `<display failed>`, and the rest goes on. Output stops at
+    /// `max_render` bytes with `(report truncated)`.
+    ///
+    /// # Errors
+    ///
+    /// Only when `out` itself fails.
+    ///
+    /// ```
+    /// use std::fmt;
+    /// use report_err::{Error, RenderStyle};
+    ///
+    /// struct Broken;
+    /// impl fmt::Display for Broken {
+    ///     fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
+    ///         Err(fmt::Error)
+    ///     }
+    /// }
+    ///
+    /// let error = report_err::err!("root").context(Broken);
+    /// let mut text = String::new();
+    /// error.render(&mut text, RenderStyle::Chain).unwrap();
+    /// assert_eq!(text, "<display failed>: root");
+    /// ```
+    pub fn render(&self, out: &mut dyn Write, style: RenderStyle) -> fmt::Result {
+        let mut capped = Capped {
+            inner: out,
+            written: 0,
+            full: false,
+        };
+        let mode = Mode::GUARDED;
+        let result = match style {
+            RenderStyle::Message => write!(capped, "{}", Shown::guarded(&ErrorText(&**self))),
+            RenderStyle::Chain => write_chain(self, &mut capped, mode),
+            RenderStyle::Report => report(self, &mut capped, mode),
+        };
+        if capped.full {
+            return capped.inner.write_str("\n(report truncated)");
+        }
+        result
+    }
+}
+
+/// Writes to a `fmt::Write` and stops quietly at `max_render` bytes.
+struct Capped<'a> {
+    inner: &'a mut dyn Write,
+    written: usize,
+    full: bool,
+}
+
+impl Write for Capped<'_> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        if self.full {
+            return Ok(());
+        }
+        let room = crate::limits::max_render().saturating_sub(self.written);
+        let mut take = s.len().min(room);
+        while take > 0 && !s.is_char_boundary(take) {
+            take -= 1;
+        }
+        let part = s.get(..take).unwrap_or("");
+        self.inner.write_str(part)?;
+        self.written += part.len();
+        if take < s.len() {
+            self.full = true;
+        }
+        Ok(())
+    }
+}
+
 /// A link's text: the string the error holds, or the link's `Display`.
 struct LinkText<'a, 'b>(&'a Link<'b>);
 
@@ -338,17 +577,78 @@ impl Display for LinkText<'_, '_> {
     }
 }
 
-/// Writes one message, escaped when the report goes to a terminal.
+/// Writes one message, escaped when the report goes to a terminal and
+/// guarded when the mode says so.
 fn message(
     out: &mut dyn Write,
-    escape: bool,
+    mode: Mode,
     indent: &'static str,
     text: &dyn Display,
 ) -> fmt::Result {
-    if escape {
+    let text = Shown::new(text, mode.guard);
+    if mode.escape {
         write!(Escaped { inner: out, indent }, "{text}")
     } else {
         write!(out, "{text}")
+    }
+}
+
+/// Writes an error's chain on one line (`{:#}`), escaped and guarded as the
+/// mode says.
+fn one_line(out: &mut dyn Write, mode: Mode, indent: &'static str, error: &Error) -> fmt::Result {
+    if mode.escape {
+        write_chain(error, &mut Escaped { inner: out, indent }, mode)
+    } else {
+        write_chain(error, out, mode)
+    }
+}
+
+/// `{:#}` for a terminal: guarded and escaped (`unraisable`).
+#[cfg(feature = "std")]
+pub(crate) fn write_chain_terminal(error: &Error, out: &mut dyn Write) -> fmt::Result {
+    one_line(out, Mode::TERMINAL, "    ", error)
+}
+
+/// Indents for each level of `Causes`.
+const LEVELS: &str = "                                                                                                                                                                                                                                                                    ";
+
+/// `Causes (n):`, the children as a tree, each on one line. The walk keeps a
+/// stack as deep as `max_depth` allows, never recursion.
+fn write_causes(error: &Error, out: &mut dyn Write, mode: Mode) -> fmt::Result {
+    let children = error.children();
+    if children.is_empty() {
+        return Ok(());
+    }
+    write!(out, "\n\nCauses ({}):", children.len())?;
+    let mut stack: [(&[Error], usize); MAX_DEPTH + 1] = [(&[], 0); MAX_DEPTH + 1];
+    let mut top = 0usize;
+    if let Some(slot) = stack.get_mut(0) {
+        *slot = (children, 0);
+    }
+    loop {
+        let Some((level, number)) = stack.get_mut(top) else {
+            return Ok(());
+        };
+        let Some((child, rest)) = level.split_first() else {
+            match top.checked_sub(1) {
+                Some(up) => top = up,
+                None => return Ok(()),
+            }
+            continue;
+        };
+        *level = rest;
+        let n = *number;
+        *number += 1;
+        let indent = LEVELS.get(..4 * (top + 1)).unwrap_or(LEVELS);
+        write!(out, "\n{indent}{n}: ")?;
+        one_line(out, mode, indent, child)?;
+        let theirs = child.children();
+        if !theirs.is_empty() {
+            if let Some(slot) = stack.get_mut(top + 1) {
+                *slot = (theirs, 0);
+                top += 1;
+            }
+        }
     }
 }
 
@@ -392,6 +692,9 @@ struct Omitted {
     sections: u32,
     points: u32,
     texts: u32,
+    children: u32,
+    suppressed: u32,
+    fields: u32,
 }
 
 impl Omitted {
@@ -403,6 +706,9 @@ impl Omitted {
             sections: extras.map_or(0, |e| e.omitted.sections),
             points: extras.map_or(0, |e| e.trace.dropped()),
             texts: extras.map_or(0, |e| e.omitted.truncated_text),
+            children: extras.map_or(0, |e| e.omitted.children),
+            suppressed: extras.map_or(0, |e| e.omitted.suppressed),
+            fields: extras.map_or(0, |e| e.omitted.fields),
         }
     }
 
@@ -412,6 +718,9 @@ impl Omitted {
             || self.sections > 0
             || self.points > 0
             || self.texts > 0
+            || self.children > 0
+            || self.suppressed > 0
+            || self.fields > 0
     }
 }
 
@@ -423,6 +732,9 @@ impl Display for Omitted {
             (self.sections, "section", "sections"),
             (self.points, "trace point", "trace points"),
             (self.texts, "text cut", "texts cut"),
+            (self.children, "child", "children"),
+            (self.suppressed, "suppressed error", "suppressed errors"),
+            (self.fields, "field", "fields"),
         ];
         let mut first = true;
         for (count, one, many) in parts {
@@ -443,13 +755,32 @@ impl Display for Omitted {
 fn write_structure(error: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let mut s = f.debug_struct("Error");
     s.field("message", &Quoted(&**error));
+    s.field("code", &CodeField(error.code()));
     s.field("location", &format_args!("{}", error.location()));
     s.field("layers", &Layers(error));
     s.field("root", &Root(error));
+    s.field("children", &error.children().len());
+    s.field("suppressed", &error.suppressed().len());
+    s.field(
+        "attachments",
+        &error.raw.extras().map_or(0, |e| e.attachments.len()),
+    );
     if error.omitted_frames() > 0 {
         s.field("omitted", &error.omitted_frames());
     }
     s.finish()
+}
+
+/// `None`, or the code as it displays (`DB-0042`).
+struct CodeField(Option<define_err::Code>);
+
+impl Debug for CodeField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Some(code) => write!(f, "{code}"),
+            None => f.write_str("None"),
+        }
+    }
 }
 
 struct Layers<'a>(&'a Error);
@@ -746,10 +1077,14 @@ Location: {}",
         let error = Error::msg("root \"q\"").context("a");
         let text = format!("{error:#?}");
         assert!(
-            text.starts_with("Error {\n    message: \"a\",\n    location: "),
+            text.starts_with("Error {\n    message: \"a\",\n    code: None,\n    location: "),
             "{text}"
         );
         assert!(text.contains("layers: [\n        \"a\",\n    ],"), "{text}");
+        assert!(
+            text.contains("children: 0,\n    suppressed: 0,\n    attachments: 0,"),
+            "{text}"
+        );
         assert!(text.contains("root: \"root \\\"q\\\"\""), "{text}");
     }
 
@@ -762,7 +1097,7 @@ Location: {}",
         tail.write_str(": end").ok();
         assert!(tail.whole().is_none());
         assert!(tail.ends_with(b"end"));
-        let mut buffers = Buffers::new();
+        let mut buffers = Buffers::new(Mode::PLAIN);
         buffers.tails[0] = Some(tail);
         assert!(buffers.repeats(Text::Buf(0), Text::Str("end")));
         assert!(!buffers.repeats(Text::Buf(0), Text::Str("nd")));

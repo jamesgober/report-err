@@ -181,6 +181,43 @@ pub trait Context<T, E>: private::Sealed {
     /// ```
     #[track_caller]
     fn trace(self) -> Result<T, Error>;
+
+    /// Runs `cleanup` whatever happened, and keeps both failures: the main
+    /// error with the cleanup's error [suppressed](Error::suppress) in it
+    /// when both fail, the cleanup's error when only the cleanup fails, and
+    /// the main result otherwise. On `Option`, `None` is the main failure.
+    ///
+    /// ```
+    /// use report_err::{err, Context};
+    ///
+    /// let written: Result<(), std::io::Error> = Err(std::io::Error::other("disk full"));
+    /// let error = written.with_cleanup(|| Err(err!("sync failed"))).unwrap_err();
+    /// assert_eq!(error.to_string(), "disk full");
+    /// assert_eq!(error.suppressed()[0].to_string(), "sync failed");
+    ///
+    /// let fine: Result<u8, std::io::Error> = Ok(1);
+    /// assert_eq!(fine.with_cleanup(|| Ok::<(), report_err::Error>(())).unwrap(), 1);
+    /// ```
+    #[track_caller]
+    fn with_cleanup<F, R>(self, cleanup: F) -> Result<T, Error>
+    where
+        F: FnOnce() -> Result<(), R>,
+        R: Into<Error>;
+}
+
+/// The rule of `with_cleanup`, once the main result is an `Error` result.
+#[track_caller]
+fn cleanup_after<T, F, R>(main: Result<T, Error>, cleanup: F) -> Result<T, Error>
+where
+    F: FnOnce() -> Result<(), R>,
+    R: Into<Error>,
+{
+    match (main, cleanup()) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Ok(_), Err(failed)) => Err(failed.into()),
+        (Err(error), Ok(())) => Err(error),
+        (Err(error), Err(failed)) => Err(error.suppress(failed)),
+    }
 }
 
 impl<T, E> Context<T, E> for Result<T, E>
@@ -295,6 +332,15 @@ where
             Ok(value) => Ok(value),
             Err(error) => Err(error.into_error().attach(value_to_attach)),
         }
+    }
+
+    #[track_caller]
+    fn with_cleanup<F, R>(self, cleanup: F) -> Result<T, Error>
+    where
+        F: FnOnce() -> Result<(), R>,
+        R: Into<Error>,
+    {
+        cleanup_after(self.map_err(IntoErrorWithContext::into_error), cleanup)
     }
 
     #[track_caller]
@@ -415,6 +461,19 @@ impl<T> Context<T, Infallible> for Option<T> {
             Some(value) => Ok(value),
             None => Err(Error::from_display("no value").attach(value_to_attach)),
         }
+    }
+
+    #[track_caller]
+    fn with_cleanup<F, R>(self, cleanup: F) -> Result<T, Error>
+    where
+        F: FnOnce() -> Result<(), R>,
+        R: Into<Error>,
+    {
+        let main = match self {
+            Some(value) => Ok(value),
+            None => Err(Error::from_display("no value")),
+        };
+        cleanup_after(main, cleanup)
     }
 
     #[track_caller]

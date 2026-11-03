@@ -47,6 +47,15 @@ fn child(name: &str) -> ExitReport {
             println!("captured={}", err!("x").backtrace().is_some());
             Ok::<(), Error>(()).into()
         }
+        "run_ok" => report_err::run(|| Ok(())),
+        "run_err" => report_err::run(|| Err(err!("failed in app"))),
+        "run_panic" => report_err::run(|| panic!("app panicked")),
+        "unraisable" => {
+            let delivered =
+                report_err::unraisable(err!("lost\u{1b}[2J in drop").context("flushing"));
+            println!("delivered={delivered}");
+            Ok::<(), Error>(()).into()
+        }
         other => case(other).into(),
     }
 }
@@ -158,6 +167,37 @@ fn backtrace_follows_the_environment() {
     assert!(captured(&[("RUST_LIB_BACKTRACE", "1")]));
 }
 
+fn run_exits_as_its_app_does() {
+    // E-105
+    assert_eq!(status("run_ok"), 0);
+    assert_eq!(status("run_err"), 1);
+    let panicked = run("run_panic");
+    assert_eq!(panicked.status.code(), Some(101));
+    let text = String::from_utf8(panicked.stderr).unwrap();
+    assert!(text.contains("Error: app panicked\n"), "{text}");
+}
+
+fn unraisable_without_a_reporter_writes_one_line() {
+    // E-92
+    let output = run("unraisable");
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "delivered=false\n"
+    );
+    let text = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(
+        text,
+        "Error (unraisable): flushing: lost\\u{1b}[2J in drop\n"
+    );
+    // Standard error closed: no panic.
+    let closed = command("unraisable")
+        .stderr(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(closed.status.code(), Some(0));
+}
+
 fn main() -> ExitReport {
     if let Ok(name) = std::env::var(CASE) {
         return child(&name);
@@ -165,7 +205,12 @@ fn main() -> ExitReport {
     // Miri does not run other processes. `--list` is a runner asking what is
     // here; nothing it can run on its own.
     if !cfg!(miri) && !std::env::args().any(|a| a == "--list") {
-        let checks: [(&str, fn()); 9] = [
+        let checks: [(&str, fn()); 11] = [
+            ("run_exits_as_its_app_does", run_exits_as_its_app_does),
+            (
+                "unraisable_without_a_reporter_writes_one_line",
+                unraisable_without_a_reporter_writes_one_line,
+            ),
             ("exit_status_for_each_case", exit_status_for_each_case),
             ("ok_prints_nothing", ok_prints_nothing),
             (

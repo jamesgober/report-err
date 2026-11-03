@@ -167,6 +167,9 @@ pub(crate) struct Omitted {
     pub(crate) attachments: u32,
     pub(crate) sections: u32,
     pub(crate) truncated_text: u32,
+    pub(crate) children: u32,
+    pub(crate) suppressed: u32,
+    pub(crate) fields: u32,
 }
 
 #[derive(Default)]
@@ -181,17 +184,30 @@ pub(crate) struct Extras {
     pub(crate) omitted: Omitted,
     /// Text and value bytes charged against `max_bytes`.
     pub(crate) bytes: usize,
+    /// The failures this error is made of (several causes).
+    pub(crate) children: Vec<crate::Error>,
+    /// Failures that happened while handling this one; not causes.
+    pub(crate) suppressed: Vec<crate::Error>,
+    /// Fields the creation hook added.
+    pub(crate) fields: Vec<(&'static str, String)>,
+    /// Errors below this one: children and suppressed errors, and theirs.
+    pub(crate) below: u32,
+    /// Levels of children and suppressed errors below this one.
+    pub(crate) height: u32,
 }
+
+/// Fields kept per error, as in define-err's record.
+pub(crate) const MAX_FIELDS: usize = 32;
 
 impl Extras {
     fn room(&self) -> usize {
-        limits::MAX_BYTES.saturating_sub(self.bytes)
+        limits::max_bytes().saturating_sub(self.bytes)
     }
 
     /// Adds a section whose owned text came from
     /// [`format_bounded`](Extras::format_bounded), so it already fits.
     pub(crate) fn add_section(&mut self, kind: SectionKind, text: Cow<'static, str>) {
-        if self.sections.len() >= limits::MAX_SECTIONS {
+        if self.sections.len() >= limits::max_sections() {
             self.omitted.sections = self.omitted.sections.saturating_add(1);
             return;
         }
@@ -226,8 +242,21 @@ impl Extras {
         out.text
     }
 
+    /// Adds a field from the creation hook, within `MAX_FIELDS` and the byte
+    /// budget.
+    pub(crate) fn add_field(&mut self, key: &'static str, value: &dyn Display) {
+        if self.fields.len() >= MAX_FIELDS || key.len() >= self.room() {
+            self.omitted.fields = self.omitted.fields.saturating_add(1);
+            return;
+        }
+        self.bytes = self.bytes.saturating_add(key.len());
+        let value = self.format_bounded(value);
+        self.bytes = self.bytes.saturating_add(value.len());
+        self.fields.push((key, value));
+    }
+
     pub(crate) fn add_attachment(&mut self, attachment: Attachment, size: usize) {
-        if self.attachments.len() >= limits::MAX_ATTACHMENTS || size > self.room() {
+        if self.attachments.len() >= limits::max_attachments() || size > self.room() {
             self.omitted.attachments = self.omitted.attachments.saturating_add(1);
             return;
         }
@@ -320,7 +349,7 @@ mod tests {
     fn test_section_text_is_cut_at_a_character_boundary() {
         // 18 bytes left: "aé" (3) and the 14-byte marker fit; "€" would not.
         let mut extras = Extras {
-            bytes: limits::MAX_BYTES - 18,
+            bytes: limits::max_bytes() - 18,
             ..Extras::default()
         };
         let text = extras.format_bounded(&"aé€bcdefghijklmnopqrstuvwxyz");
@@ -328,7 +357,7 @@ mod tests {
         assert!(text.len() <= 18);
         assert_eq!(extras.omitted.truncated_text, 1);
         let mut full = Extras {
-            bytes: limits::MAX_BYTES,
+            bytes: limits::max_bytes(),
             ..Extras::default()
         };
         assert_eq!(full.format_bounded(&"x"), "");
@@ -339,12 +368,12 @@ mod tests {
     #[test]
     fn test_section_and_attachment_budgets() {
         let mut extras = Extras::default();
-        for _ in 0..limits::MAX_SECTIONS + 2 {
+        for _ in 0..limits::max_sections() + 2 {
             extras.add_section(SectionKind::Note, Cow::Borrowed("n"));
         }
-        assert_eq!(extras.sections.len(), limits::MAX_SECTIONS);
+        assert_eq!(extras.sections.len(), limits::max_sections());
         assert_eq!(extras.omitted.sections, 2);
-        for i in 0..limits::MAX_ATTACHMENTS + 3 {
+        for i in 0..limits::max_attachments() + 3 {
             extras.add_attachment(
                 Attachment {
                     value: Box::new(i),
@@ -353,7 +382,7 @@ mod tests {
                 8,
             );
         }
-        assert_eq!(extras.attachments.len(), limits::MAX_ATTACHMENTS);
+        assert_eq!(extras.attachments.len(), limits::max_attachments());
         assert_eq!(extras.omitted.attachments, 3);
     }
 }

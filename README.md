@@ -29,7 +29,7 @@
         <strong>MSRV is 1.81+</strong> (Rust 2021 edition). <code>no_std</code> + <code>alloc</code>; <code>std</code> on by default.
     </p>
     <blockquote>
-        <strong>Status: <code>0.4.0</code>, codes and reports.</strong> The anyhow surface, plus error codes, severity, categories, and kinds from define-err; notes, warnings, and suggestions; typed attachments; a propagation trail; backtraces; and <code>ExitReport</code>, which exits with a code chosen from the error. Several causes, suppressed errors, budgets, and the panic boundary arrive in <code>0.5.0</code>. The whole API, with the version each item arrives in, is in <a href="./docs/API.md"><code>docs/API.md</code></a>.
+        <strong>Status: <code>0.5.0</code>, feature complete.</strong> The anyhow surface; error codes, severity, categories, and kinds from define-err; notes, attachments, a propagation trail, and backtraces; <code>ExitReport</code>; several causes and <code>collect_all()</code>; suppressed errors and cleanup; budgets on everything that grows; the panic boundary; the creation hook; and reporting through define-err's facade. Next come the optimisation (<code>0.6</code>) and hardening (<code>0.7</code>) milestones. The whole API is in <a href="./docs/API.md"><code>docs/API.md</code></a>.
     </blockquote>
 </div>
 
@@ -40,7 +40,7 @@
 
 ```toml
 [dependencies]
-report-err = "0.4.0"
+report-err = "0.5.0"
 ```
 
 ## Quick start
@@ -138,7 +138,7 @@ Location: src/users.rs:6:9
 
 | anyhow | report-err |
 |---|---|
-| `anyhow = "1"` | `report-err = "0.4.0"` |
+| `anyhow = "1"` | `report-err = "0.5.0"` |
 | `use anyhow::{Context, Result};` | `use report_err::{Context, Result};` |
 | `anyhow::Error`, `bail!`, `ensure!`, `format_err!`, `.context`, `.chain()`, `.downcast_ref` | same names |
 | `anyhow!(...)` | `err!(...)` |
@@ -163,19 +163,36 @@ Measured at `0.3.0` with criterion against anyhow 1.0.104 on the same machine (W
 
 A `0.4.0` run, on a machine too busy to give absolute figures, kept the leads on context, deep errors, and `downcast_ref`. Creating a plain error is now level with anyhow rather than ahead, because report-err makes the same backtrace check; `{:?}` is 27% slower because the report prints a `Trace:` block anyhow has no equivalent for. The drop comparison was too noisy to read. The 0.6 milestone measures all of it again on a quiet machine.
 
+## Several causes, cleanup, and panics
+
+```rust
+use report_err::{boundary, CollectAll, Context, Errors, Result};
+
+let configs: Vec<Config> = paths.iter().map(|p| load(p)).collect_all()?;
+// on failure: "2 of 9 items failed", with both load errors as children
+
+let written = write_all(&mut file, &data).with_cleanup(|| file.sync_all())?;
+// both failed: the write error, with the sync error suppressed in it
+
+let page = boundary(|| plugin.render(&page)).context("plugin `gallery` failed")?;
+// a panic in the plugin becomes an error with exit code 101
+```
+
+`boundary` catches a panic only when panics unwind. Under `panic = "abort"` (the usual release profile in this portfolio) the process aborts at the panic, as `std::panic::catch_unwind` documents; `report_err::PANICS_CAUGHT` says which applies.
+
 ## What is coming
 
 | What | Version |
 |---|---|
-| Several causes, `collect_all()`, `split`, `flatten`, suppressed errors, `with_cleanup` | `0.5.0` |
-| Panic boundary, creation hook, reporting through define-err's facade, budgets on every growable part | `0.5.0` |
-
-`boundary` will catch a panic only when panics unwind. Under `panic = "abort"` (the usual release profile in this portfolio) the process aborts at the panic, as `std::panic::catch_unwind` documents; `report_err::PANICS_CAUGHT` will say which applies.
+| Benchmarks against anyhow, eyre, and error-stack on Linux, Windows, and aarch64; `docs/PERFORMANCE.md` | `0.6.0` |
+| Attack tests, fuzzing, soak runs, `SECURITY.md` | `0.7.0` |
 
 ## Documentation
 
 - [`docs/API.md`](./docs/API.md): the public API, with costs and examples.
 - [`docs/MIGRATING.md`](./docs/MIGRATING.md): from anyhow, eyre, and snafu's `Whatever`.
+- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md): the modules, the life of an error, and its bounds.
+- [`docs/PLATFORM-NOTES.md`](./docs/PLATFORM-NOTES.md): `no_std`, `panic = "abort"`, backtraces, and targets.
 - [`docs/UNSAFE.md`](./docs/UNSAFE.md): the one-word representation, its `unsafe` core, and how Miri checks it.
 - [`dev/PLAN.md`](./dev/PLAN.md): the design, the threats and their tests, performance, and the decision log.
 
