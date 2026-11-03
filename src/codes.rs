@@ -70,7 +70,10 @@ impl Error {
     /// The category when something says what it is: the code, its catalog
     /// entry, the root's `ErrorInfo`, or an `io::Error` root.
     fn known_category(&self) -> Option<Category> {
-        self.facts().category().or_else(|| self.io_category())
+        self.facts()
+            .category()
+            .or_else(|| self.io_category())
+            .or_else(|| self.is_panic().then_some(Category::Internal))
     }
 
     #[cfg(feature = "std")]
@@ -143,6 +146,7 @@ impl Error {
         self.raw
             .severity()
             .or_else(|| self.facts().severity())
+            .or_else(|| self.is_panic().then_some(Severity::FATAL))
             .unwrap_or_else(|| self.category().default_severity())
     }
 
@@ -177,7 +181,10 @@ impl Error {
     #[must_use]
     pub fn kinds(&self) -> Kinds {
         let added = self.raw.extras().map(|e| e.kinds).unwrap_or_default();
-        let kinds = added | self.facts().kinds();
+        let mut kinds = added | self.facts().kinds();
+        if self.is_panic() {
+            kinds |= Kinds::PANIC;
+        }
         if kinds.is_empty() {
             Kinds::ERROR
         } else {
@@ -237,6 +244,18 @@ impl Error {
         Some(self.category().default_public_message())
     }
 
+    /// The variant's own `#[public]` text, when only the identity probe
+    /// knows the code (no catalog entry, no `from_info` root). The probe
+    /// lends it, so `public_message` cannot return it; the owned record
+    /// carries it.
+    pub(crate) fn identity_public(&self) -> Option<alloc::string::String> {
+        let facts = self.facts();
+        if facts.entry.is_some() || facts.info.is_some() {
+            return None;
+        }
+        facts.identity?.public.map(alloc::string::String::from)
+    }
+
     /// Wraps an error like [`Error::new`], and keeps it reachable as
     /// `&dyn ErrorInfo` through [`info`](Error::info), so per-value metadata
     /// the identity probe cannot carry (`retry_after`, a `#[location]` field)
@@ -261,7 +280,7 @@ impl Error {
         Error {
             raw: RawError::from_info(error, Location::caller()),
         }
-        .capture_backtrace()
+        .created()
     }
 
     /// The root as `&dyn ErrorInfo`, for an error built with
@@ -290,6 +309,7 @@ impl Error {
     pub fn exit_code(&self) -> u8 {
         self.raw
             .exit()
+            .or_else(|| self.is_panic().then_some(101))
             .or_else(|| self.known_category().map(Category::exit_code))
             .unwrap_or(1)
     }

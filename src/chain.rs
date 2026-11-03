@@ -44,6 +44,8 @@ pub struct Chain<'a> {
     /// Whether the next link after the layers is the root.
     at_root: bool,
     truncated: bool,
+    /// Links already taken from the back.
+    back: usize,
 }
 
 impl<'a> Chain<'a> {
@@ -56,6 +58,7 @@ impl<'a> Chain<'a> {
             at_root: true,
             yielded: 0,
             truncated: false,
+            back: 0,
         }
     }
 
@@ -65,7 +68,7 @@ impl<'a> Chain<'a> {
     }
 
     fn remaining(&self) -> usize {
-        let budget = limits::MAX_CHAIN.saturating_sub(self.yielded);
+        let budget = limits::max_chain().saturating_sub(self.yielded);
         let mut count = self.frames.min(budget);
         let mut cur = self.next;
         while let Some(link) = cur {
@@ -82,7 +85,10 @@ impl<'a> Chain<'a> {
 impl<'a> Chain<'a> {
     /// The next link, with its text when the error holds it as a string.
     pub(crate) fn next_link(&mut self) -> Option<Link<'a>> {
-        if self.yielded >= limits::MAX_CHAIN {
+        if self.back > 0 && self.remaining() <= self.back {
+            return None;
+        }
+        if self.yielded >= limits::max_chain() {
             if self.frames > 0 || self.next.is_some() {
                 self.truncated = true;
             }
@@ -125,8 +131,22 @@ impl<'a> Iterator for Chain<'a> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let n = self.remaining();
+        let n = self.remaining().saturating_sub(self.back);
         (n, Some(n))
+    }
+}
+
+/// `rev()` walks from the front to the link it returns, so each step costs
+/// the links before it; a chain is at most `max_chain` links. No allocation.
+impl DoubleEndedIterator for Chain<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let left = self.remaining().saturating_sub(self.back);
+        let last = left.checked_sub(1)?;
+        let mut walk = self.clone();
+        walk.back = 0;
+        let link = walk.nth(last)?;
+        self.back += 1;
+        Some(link)
     }
 }
 
@@ -184,7 +204,7 @@ mod tests {
         let error = Error::new(Looping).context("ctx");
         let mut chain = error.chain();
         let texts: Vec<_> = chain.by_ref().map(|l| l.to_string()).collect();
-        assert_eq!(texts.len(), crate::limits::MAX_CHAIN);
+        assert_eq!(texts.len(), crate::limits::max_chain());
         assert_eq!(texts[0], "ctx");
         assert!(texts[1..].iter().all(|t| t == "looping"));
         assert!(chain.truncated());
@@ -196,8 +216,8 @@ mod tests {
     fn test_chain_longer_than_budget_is_bounded() {
         let error = Error::new(Deep(0));
         let mut chain = error.chain();
-        assert_eq!(chain.len(), crate::limits::MAX_CHAIN);
-        assert_eq!(chain.by_ref().count(), crate::limits::MAX_CHAIN);
+        assert_eq!(chain.len(), crate::limits::max_chain());
+        assert_eq!(chain.by_ref().count(), crate::limits::max_chain());
         assert!(chain.truncated());
         assert!(chain.next().is_none());
     }

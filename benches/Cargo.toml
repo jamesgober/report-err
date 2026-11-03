@@ -9,7 +9,7 @@ publish = false
 
 [dependencies]
 report-err = { path = ".." }
-define-err = "0.4"
+define-err = "0.5"
 anyhow = "=1.0.104"
 criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 

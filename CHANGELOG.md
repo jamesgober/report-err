@@ -13,6 +13,57 @@
 
 ---
 
+## [0.5.0] - 2026-11-03
+
+Feature complete. Requires define-err 0.5.
+
+### Added
+
+- Several causes: `Error::group`, `children`, `push_child`, `split`,
+  `flatten`; `Errors` (gather, then `finish`); `CollectAll::collect_all`
+  (every failure of an iterator, as `"{failed} of {total} items failed"`).
+  The report prints them under `Causes (n):` as a tree.
+- `find`, `find_all`, and `find_in_suppressed`: depth first over the tree,
+  iterative and bounded, no allocation.
+- Suppressed errors: `suppress`, `suppressed`, `Context::with_cleanup`, and
+  `unraisable`; printed under `Suppressed:`.
+- Budgets: `Limits`, `configure` (once, every field checked first), `limits`,
+  and `ConfigureError::OutOfRange`.
+- The panic boundary: `boundary`, `run`, `PANICS_CAUGHT`, `Error::from_panic`,
+  `is_panic`. A panic error has `Kinds::PANIC`, category `Internal`,
+  severity `FATAL`, and exit code 101.
+- The creation hook: report-err calls define-err's hook for every error it
+  creates, guarded against recursion and panics; its fields print under
+  `Fields:`.
+- Reporting: `report` (once, from any thread), `is_reported`, `record`.
+- `render` and `RenderStyle`: guarded output, for paths that must not fail.
+- `Chain` is a `DoubleEndedIterator`.
+- `testing`: `assert_chain_contains`, `assert_code`, `assert_section`.
+- `CollectAll` in the prelude.
+- `docs/ARCHITECTURE.md`, `docs/PLATFORM-NOTES.md`; examples
+  `panic_boundary`.
+
+### Changed
+
+- `ExitReport`, `record`, `report`, `render`, and `unraisable` write every
+  `Display` through a guard: `<display panicked>` or `<display failed>`,
+  and the rest goes on.
+- `{:#?}` also shows the code and the counts of children, suppressed errors,
+  and attachments.
+- The `Caused by:` de-duplication now works across the 4,096 links that
+  `max_chain` allows (it covered 128).
+- Requires define-err 0.5 (from 0.4).
+
+### Security
+
+- Suppressed errors count toward `max_tree` and `max_depth`, so no error
+  nests without bound through `suppress` and dropping one cannot overflow
+  the stack.
+- A panic payload whose `Drop` panics is contained, and the payload of that
+  second panic is dropped too instead of leaked.
+
+---
+
 ## [0.4.0] - 2026-11-02
 
 Codes and reports. Requires define-err 0.4.
@@ -179,7 +230,8 @@ The scaffold and the plan. No functional code yet.
   cases, open decisions, and the decision log D-001 to D-008),
   `dev/DIRECTIVES.md`, and `dev/ROADMAP.md`.
 
-[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/jamesgober/report-err/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/jamesgober/report-err/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jamesgober/report-err/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jamesgober/report-err/compare/v0.1.0...v0.2.0

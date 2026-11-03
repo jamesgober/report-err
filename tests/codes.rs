@@ -288,6 +288,16 @@ fn test_public_message_from_info_uses_the_variant_text() {
 }
 
 #[test]
+fn test_record_carries_the_variant_public_text() {
+    let error = Error::new(DbError::Timeout).context("loading a user");
+    assert_eq!(
+        error.public_message(),
+        Some(Category::Unavailable.default_public_message())
+    );
+    assert_eq!(error.record().public, "The database is busy.");
+}
+
+#[test]
 fn test_from_info_with_another_code_does_not_answer_for_it() {
     let error = Error::from_info(DbError::Timeout).coded(code!("APP", 1));
     assert_eq!(

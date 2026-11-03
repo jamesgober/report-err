@@ -127,6 +127,28 @@ jobs:
           RUSTFLAGS: "-Zsanitizer=address -D warnings"
           ASAN_OPTIONS: "detect_leaks=1"
 
+  panic-abort:
+    name: panic = "abort"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # E-96: under `panic = "abort"` the boundary catches nothing and the
+      # process aborts (SIGABRT, status 134) after saying so.
+      - name: Boundary aborts
+        run: |
+          set +e
+          cargo run --example panic_boundary > out.txt
+          status=$?
+          set -e
+          cat out.txt
+          grep -qx 'PANICS_CAUGHT=false' out.txt
+          ! grep -q 'caught:' out.txt
+          test "$status" -eq 134
+        env:
+          RUSTFLAGS: "-C panic=abort"
+
   benches:
     name: Benchmarks (build)
     runs-on: ubuntu-latest

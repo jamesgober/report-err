@@ -66,7 +66,7 @@ impl Error {
         Error {
             raw: RawError::from_error(error, Location::caller()),
         }
-        .capture_backtrace()
+        .created()
     }
 
     /// Makes an error from a message. The message stays downcastable as its
@@ -84,7 +84,7 @@ impl Error {
         Error {
             raw: RawError::from_message(message, Location::caller()),
         }
-        .capture_backtrace()
+        .created()
     }
 
     /// An error whose root is a `Display`-only message (context on `None`).
@@ -96,7 +96,7 @@ impl Error {
         Error {
             raw: RawError::from_display(message, Location::caller()),
         }
-        .capture_backtrace()
+        .created()
     }
 
     /// An error value with its first context layer, in one allocation.
@@ -108,8 +108,8 @@ impl Error {
     {
         let location = Location::caller();
         let mut raw = RawError::from_error(error, location);
-        raw.push_frame(location, FrameValue::new(context), limits::MAX_FRAMES);
-        Error { raw }.capture_backtrace()
+        raw.push_frame(location, FrameValue::new(context), limits::max_frames());
+        Error { raw }.created()
     }
 
     /// Adds a layer of context: `context` becomes the outermost message and
@@ -133,7 +133,7 @@ impl Error {
         self.raw.push_frame(
             Location::caller(),
             FrameValue::new(context),
-            limits::MAX_FRAMES,
+            limits::max_frames(),
         );
         self
     }

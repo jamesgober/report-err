@@ -9,6 +9,8 @@
         <span>&nbsp;│&nbsp;</span>
         <a href="./API.md" title="API reference"><b>API</b></a>
         <span>&nbsp;│&nbsp;</span>
+        <a href="./ARCHITECTURE.md" title="Architecture"><b>ARCHITECTURE</b></a>
+        <span>&nbsp;│&nbsp;</span>
         <span>UNSAFE</span>
         <span>&nbsp;│&nbsp;</span>
         <a href="../dev/PLAN.md" title="Plan"><b>PLAN</b></a>
@@ -42,6 +44,7 @@ One heap allocation per error, made with `Box::new(Node<P>)` and kept as a point
                      │    values    u16                      of those, layers holding a non-string value
                      │    severity  Option<Severity>         the override
                      │    exit      u8                       the override; 0 means none
+                     │    flags     AtomicU8                 made from a panic, reported (set from &self)
                      │    first     MaybeUninit<Frame>       the innermost layer (when frames >= 1)
                      └─ payload: P                           the root error, inline
 
@@ -49,7 +52,7 @@ One heap allocation per error, made with `Box::new(Node<P>)` and kept as a point
  Ext (a second allocation): inline: [MaybeUninit<Frame>; 4], spill: Vec<Frame>, extras: Extras
 ```
 
-The payload `P` is the user's error `E`, or one of three `#[repr(transparent)]` wrappers: `MessageError<M>` (`Error::msg`, `err!`), `DisplayError<M>` (context on `None`), and `BoxedError` (`from_boxed`). The vtable holds, for `P`: `drop` (frees the node as a `Node<P>`), `payload` (a `NonNull<dyn Error + Send + Sync>` to the payload, made by projecting to the field; for a boxed root, to the boxed error), `take` (moves the payload out and frees the rest), `type_id` (the type a caller downcasts to: `M` for a message wrapper, `Box<dyn Error + Send + Sync>` for a boxed root), and `info` (for `from_info`, a `NonNull<dyn ErrorInfo>` to the payload, made the same way as `payload`; `None` for every other constructor). `Extras` is a safe struct: attachments, sections, trace points, the backtrace, the added kinds, and the budget counters. `raw` reaches it by projection only (I-13). Flags join the header in `0.5`.
+The payload `P` is the user's error `E`, or one of three `#[repr(transparent)]` wrappers: `MessageError<M>` (`Error::msg`, `err!`), `DisplayError<M>` (context on `None`), and `BoxedError` (`from_boxed`). The vtable holds, for `P`: `drop` (frees the node as a `Node<P>`), `payload` (a `NonNull<dyn Error + Send + Sync>` to the payload, made by projecting to the field; for a boxed root, to the boxed error), `take` (moves the payload out and frees the rest), `type_id` (the type a caller downcasts to: `M` for a message wrapper, `Box<dyn Error + Send + Sync>` for a boxed root), `info` (for `from_info`, a `NonNull<dyn ErrorInfo>` to the payload, made the same way as `payload`; `None` for every other constructor), and `type_name` (`core::any::type_name` of the type a caller downcasts to, for the creation hook and the record). `Extras` is a safe struct: attachments, sections, trace points, the backtrace, the added kinds, and the budget counters. `raw` reaches it by projection only (I-13). Flags join the header in `0.5`.
 
 `WriteOnce<T>` is the process-wide slot behind `configure_catalogs` and, from `0.5`, the budgets and the reporter: an `AtomicPtr<T>` holding a box that is never freed (I-14).
 
@@ -102,3 +105,4 @@ CI runs both on every push and pull request (`cargo miri test --lib --tests`), w
 | 0.2.0 | none (the module does not exist yet); this file written; the chain view prototyped and checked under Miri |
 | 0.3.0 | the module written: the node and its vtable, the three payload wrappers, the flat context store with direct links, invariants I-1 to I-13 each with a test; clean under Miri (strict provenance, Stacked Borrows and Tree Borrows) and AddressSanitizer |
 | 0.4.0 | the header holds the code, severity, and exit overrides (72 to 80 bytes; the omitted count moved to `Extras`); the vtable's `info` entry and `from_info`; `Extras` in the extension block; `WriteOnce` and invariant I-14 |
+| 0.5.0 | the header's atomic `flags` (it fits in the padding: still 80 bytes) and the vtable's `type_name`; no new `unsafe` block and no new invariant. `Extras` gains children, suppressed errors, and fields, all safe data |

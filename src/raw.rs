@@ -22,7 +22,7 @@ use core::fmt::{self, Debug, Display};
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::panic::Location;
 use core::ptr::{self, addr_of, addr_of_mut, NonNull};
-use core::sync::atomic::{AtomicPtr, Ordering};
+use core::sync::atomic::{AtomicPtr, AtomicU8, Ordering};
 
 use define_err::{Code, ErrorInfo, Severity};
 
@@ -53,7 +53,15 @@ struct VTable {
     type_id: fn() -> TypeId,
     /// The payload as `ErrorInfo`, for an error built with `from_info`.
     info: Option<InfoFn>,
+    /// The name of the type a caller downcasts to, for the creation hook and
+    /// the record.
+    type_name: fn() -> &'static str,
 }
+
+/// Header flag: the error was made from a panic.
+pub(crate) const PANIC: u8 = 1;
+/// Header flag: `report` has run.
+pub(crate) const REPORTED: u8 = 2;
 
 /// The fixed part of every node; the first field of `Node<P>` (I-1).
 #[repr(C)]
@@ -74,6 +82,9 @@ pub(crate) struct Header {
     severity: Option<Severity>,
     /// The exit code set with `with_exit_code`; 0 means none.
     exit: u8,
+    /// `PANIC` and `REPORTED`; atomic so `report(&self)` can set one from any
+    /// thread.
+    flags: AtomicU8,
     /// The innermost context layer; initialised when `frames >= 1`.
     first: MaybeUninit<Frame>,
 }
@@ -249,6 +260,7 @@ fn vtable<P: StdError + Send + Sync + 'static, U: 'static>() -> &'static VTable 
         take: take_node::<P>,
         type_id: TypeId::of::<U>,
         info: None,
+        type_name: core::any::type_name::<U>,
     }
 }
 
@@ -260,6 +272,7 @@ fn vtable_info<E: ErrorInfo + Send + Sync + 'static>() -> &'static VTable {
         take: take_node::<E>,
         type_id: TypeId::of::<E>,
         info: Some(info_of::<E>),
+        type_name: core::any::type_name::<E>,
     }
 }
 
@@ -270,6 +283,7 @@ fn vtable_boxed() -> &'static VTable {
         take: take_node::<BoxedError>,
         type_id: TypeId::of::<Box<DynError>>,
         info: None,
+        type_name: core::any::type_name::<Box<DynError>>,
     }
 }
 
@@ -299,6 +313,7 @@ impl RawError {
             values: 0,
             severity: None,
             exit: 0,
+            flags: AtomicU8::new(0),
             first: MaybeUninit::uninit(),
         };
         let node: &mut Node<P> = Box::leak(Box::new(Node { header, payload }));
@@ -392,6 +407,21 @@ impl RawError {
 
     pub(crate) fn set_exit(&mut self, code: u8) {
         self.header_mut().exit = code;
+    }
+
+    /// The header flags (`PANIC`, `REPORTED`).
+    pub(crate) fn flags(&self) -> u8 {
+        self.header().flags.load(Ordering::Acquire)
+    }
+
+    /// Sets `bits` and returns the flags as they were, in one atomic step.
+    pub(crate) fn set_flags(&self, bits: u8) -> u8 {
+        self.header().flags.fetch_or(bits, Ordering::AcqRel)
+    }
+
+    /// The name of the type the root downcasts to.
+    pub(crate) fn type_name(&self) -> &'static str {
+        (self.vtable().type_name)()
     }
 
     /// The root as `ErrorInfo`, for an error built with `from_info`.
@@ -1081,6 +1111,17 @@ mod tests {
         });
         assert_eq!(wins, 1);
         assert!(SLOT.get().is_some_and(|n| (1..=4).contains(n)));
+    }
+
+    #[test]
+    fn test_raw_flags_are_set_once_and_kept() {
+        let raw = RawError::from_error(Root("r"), here());
+        assert_eq!(raw.flags(), 0);
+        assert_eq!(raw.set_flags(REPORTED), 0);
+        assert_eq!(raw.set_flags(REPORTED), REPORTED);
+        assert_eq!(raw.set_flags(PANIC), REPORTED);
+        assert_eq!(raw.flags(), PANIC | REPORTED);
+        assert!(raw.type_name().ends_with("Root"));
     }
 
     #[test]

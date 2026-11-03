@@ -44,12 +44,12 @@ Exit: a CLI builds against 0.4 with `fn main() -> ExitReport` and category exit 
 - [x] Attachments and `attach_display` (ATT-01 to ATT-04), sections (ATT-05 to ATT-07, CTX-04), `attach` and `trace` on `Context` (CTX-05, CTX-06), trace points and the trail (TRC-01 to TRC-03), lazy backtraces captured at the root only (TRC-04, TRC-05), `ExitReport` with terminal and bidirectional-control escaping and a 1 MiB cap (MAIN-02), `exit_code` and `with_exit_code` (MAIN-03), `Ok` (ROOT-04); the report's sections, `Trace:`, `Attachments:`, `Omitted:`, and `Backtrace:` blocks.
 - [x] Edge cases E-50 to E-56 (`tests/codes.rs`, `tests/catalog.rs`), E-66 to E-80 (`tests/extended.rs`), E-69, E-70, E-93, E-94 as subprocesses (`tests/exit.rs`).
 
-## v0.5.0 - Feature complete
+## v0.5.0 - Feature complete (DONE, 2026-11-03)
 API: ERR-16, CTX-07, CHN-03 to CHN-06, GRP-01 to GRP-07, SUP-01 to SUP-04, CFG-01 to CFG-04, MAIN-04, BND-01 to BND-03, HOOK-01 to HOOK-04, STD-04, TST-01.
-Exit: every P0 to P2 item implemented and tested on Linux, macOS, and Windows; L7's prototype can install a creation hook and receive reports.
-- [ ] Several causes and collections, suppressed errors, budgets and `configure`, guarded rendering, the panic boundary and the abort subprocess test, the creation hook and reporting through define-err.
-- [ ] Edge cases E-81 to E-107.
-- [ ] `docs/ARCHITECTURE.md`, `docs/PLATFORM-NOTES.md`.
+Exit: every P0 to P2 item implemented and tested on Linux, macOS, and Windows; L7's prototype can install a creation hook and receive reports. Met: `tests/report.rs` installs a creation hook and a reporter through define-err 0.5 and receives the records; L7 does not exist yet, so its prototype is that test (D-045).
+- [x] Several causes and collections, suppressed errors, budgets and `configure`, guarded rendering, the panic boundary and the abort check (CI job `panic = "abort"`), the creation hook and reporting through define-err.
+- [x] Edge cases E-81 to E-107 (`tests/groups.rs`, `tests/panic.rs`, `tests/report.rs`, `tests/limits.rs`, `tests/exit.rs`).
+- [x] `docs/ARCHITECTURE.md`, `docs/PLATFORM-NOTES.md`.
 
 ## v0.6.0 - Optimisation
 Exit: every `PLAN.md` 11.1 target measured; each met or its reason recorded and reviewed.

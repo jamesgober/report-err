@@ -87,7 +87,7 @@ Costs are estimates (marked [est.]) until they are measured; numbers marked [mea
 
 ```toml
 [dependencies]
-report-err = "0.4"
+report-err = "0.5"
 ```
 
 ### Features
@@ -103,7 +103,7 @@ The crate is `#![no_std]` and needs `alloc`: an `Error` lives on the heap. `defa
 
 ```toml
 [dependencies]
-report-err = { version = "0.4", default-features = false }
+report-err = { version = "0.5", default-features = false }
 ```
 
 MSRV is 1.81, the first release with `core::error::Error`.
@@ -584,7 +584,7 @@ impl FusedIterator for Chain<'_>;
 | CHN-01 | `chain`, `Chain` | 1 | 0.3 |
 | CHN-06 | `DoubleEndedIterator` (`rev`) | 3 | 0.5 |
 
-Yields, outermost first: every context layer (newest to oldest), the root error, then the root's own `source()` chain. These are exactly the links a hand-written `source()` walk from `&*error` visits; `chain()` reads the context layers from the error's own store instead of following `source()` [measured: 9.3 ns for nine layers and the root, anyhow 18.4 ns]. Bounded by [`Limits::max_chain`](#limits) (128): a `source()` that returns itself or never ends stops there, and `len()` stays exact. No allocation; `rev` keeps a bounded buffer on the stack.
+Yields, outermost first: every context layer (newest to oldest), the root error, then the root's own `source()` chain. These are exactly the links a hand-written `source()` walk from `&*error` visits; `chain()` reads the context layers from the error's own store instead of following `source()` [measured: 9.3 ns for nine layers and the root, anyhow 18.4 ns]. Bounded by [`Limits::max_chain`](#limits) (128): a `source()` that returns itself or never ends stops there, and `len()` stays exact. No allocation; `rev` walks from the front to each link it returns, so a reversed walk costs O(n²) links for a chain of n (n is at most `max_chain`).
 
 ```rust
 for (index, cause) in error.chain().enumerate() {
@@ -756,7 +756,7 @@ impl Error {
 }
 ```
 
-Since `0.5` (GRP-04, GRP-05). `split` divides a group's children into those that match and those that do not; each half keeps the group's message, code, and sections, and an empty half is `None` (Python's `ExceptionGroup.split`). `flatten` returns the leaves of the tree, depth first.
+Since `0.5` (GRP-04, GRP-05). `split` divides a group's direct children into those that match and those that do not; each half keeps the group's message, location, code, severity, exit code, kinds, and sections, and an empty half is `None` (Python's `ExceptionGroup.split`). The matching half is the error itself, so it also keeps its context layers, attachments, and suppressed errors. An error with no children is tested itself. `flatten` returns the leaves of the tree, depth first; the groups themselves are dropped.
 
 ```rust
 let (retryable, permanent) = error.split(|e| e.category().is_transient());
@@ -841,11 +841,11 @@ fn with_cleanup<F, R>(self, cleanup: F) -> Result<T, Error>
 | SUP-03 | `unraisable` | 2 | 0.5 |
 | SUP-04 | `with_cleanup` | 2 | 0.5 |
 
-A suppressed error is a failure that happened while handling another one (Java's `addSuppressed`). It is shown under `Suppressed:` but is not a cause: `find`, `code`, and `downcast` ignore it. Bounded by `max_suppressed` (16).
+A suppressed error is a failure that happened while handling another one (Java's `addSuppressed`). It is shown under `Suppressed:` but is not a cause: `find`, `code`, and `downcast` ignore it. Bounded by `max_suppressed` (16), and its tree counts toward `max_tree` and `max_depth` like a child's, so errors cannot nest without bound through `suppress` either.
 
 `with_cleanup` runs the cleanup either way and returns the main error with the cleanup's error suppressed in it when both fail, the cleanup's error when only the cleanup fails, and the main result otherwise.
 
-`unraisable` is for an error with nowhere to go (in `Drop`, in a thread nobody joins): it reports it through define-err's facade as unhandled, and returns `true` if a reporter received it. With no reporter installed and `std` on, it writes one guarded, escaped line to standard error, so the error is never lost silently.
+`unraisable` is for an error with nowhere to go (in `Drop`, in a thread nobody joins): it reports it through define-err's facade as unhandled (the record's `handled` is `false`), and returns `true` when a reporter is installed to receive it. With no reporter installed and `std` on, it writes one guarded, escaped line to standard error (`Error (unraisable): ` and the chain), so the error is never lost silently, and returns `false`.
 
 ```rust
 if let Err(error) = tx.apply(batch) {
@@ -948,8 +948,8 @@ Every growable part of an error has a budget, safe for servers by default. Since
 |---|---|---|
 | `max_frames` | context layers per error | keep the innermost 8 and the newest; drop the oldest of the middle; count |
 | `max_attachments`, `max_sections`, `max_suppressed` | per error | refuse the new one; count |
-| `max_tree` | errors in one tree, nested children included | refuse the child as a whole; count (`Errors::len` stays exact) |
-| `max_depth` | nesting of children | refuse a child that would exceed it; count |
+| `max_tree` | errors in one tree, nested children and suppressed errors included | refuse the child as a whole; count (`Errors::len` stays exact) |
+| `max_depth` | nesting of children and suppressed errors | refuse one that would exceed it; count |
 | `max_bytes` | text and shallow value bytes held by one error's extension block | cut text at a character boundary with `...(truncated)`; refuse values; count |
 | `max_chain` | links walked in one chain | stop; print `(chain truncated)` |
 | `max_render` | bytes written by one guarded rendering | stop; print `(report truncated)` |
@@ -1109,7 +1109,7 @@ impl Error {
 
 **Under `panic = "abort"` nothing is caught**: the process aborts at the panic, as `catch_unwind` documents. The release profile of most of this portfolio's applications is `panic = "abort"`, so there `boundary` is a plain call. `PANICS_CAUGHT` (`cfg!(panic = "unwind")`) says which applies. Cost with no panic [est.]: under 2 ns over a plain call.
 
-`from_panic` turns a `JoinHandle::join` or `catch_unwind` payload into an error. A payload whose own `Drop` panics is dropped inside a second guard and, if that panics too, leaked instead of propagated.
+`from_panic` turns a `JoinHandle::join` or `catch_unwind` payload into an error. A payload whose own `Drop` panics is dropped inside a guard, and so is the payload of that panic, up to four times; one whose drops keep panicking is leaked instead of propagated.
 
 ```rust
 let output = report_err::boundary(|| plugin.render(&page))
@@ -1154,7 +1154,7 @@ impl Error {
 }
 ```
 
-An owned, size-capped snapshot of the error for anything that outlives it: queued listeners, a crash ring, a message to another process or node. Since `0.5` (HOOK-04). Built from `ErrorRecord::from_error` over `&*self` (every context layer, then the root's sources), with the resolved code, severity, category, kinds, and public message, the hook's fields, the trail, and the backtrace text; within define-err's `RecordLimits`. An `Error` itself never crosses a process boundary (it holds trait objects and locations of one binary); its record does.
+An owned, size-capped snapshot of the error for anything that outlives it: queued listeners, a crash ring, a message to another process or node. Since `0.5` (HOOK-04). One chain entry per link (every context layer, with type name `context`, then the root and its sources, with their codes and type names), each message written through the guarded renderer; the resolved code, severity, category, kinds, and public message (a variant's own `#[public]` text when the probe carries it); the sections (as `note`, `warning`, `suggestion` fields), the hook's fields, and the counts of `children` and `suppressed`; the trail (created, context, converted for `.trace()`, reported); and the backtrace text when one was captured. Within define-err's `RecordLimits`. An `Error` itself never crosses a process boundary (it holds trait objects and locations of one binary); its record does.
 
 ```rust
 let record = error.record();
@@ -1187,7 +1187,7 @@ if let Some(after) = error.info().and_then(|i| i.retry_after()) {
 
 ### The creation hook
 
-Installed with define-err's `set_creation_hook`; report-err calls the hook once for every `Error` it creates (not for context layers). Since `0.5` (HOOK-01). The hook receives the origin location, the explicit code, and the root's type name, and may add fields (shown under `Fields:` and kept in the record) and kinds. report-err owns the guards: a hook that creates an `Error` on the same thread is not called again for it (with `std`); a hook that panics leaves the field `creation_hook = "panicked"` and the error is still created (with `std` and unwinding). Without `std` the hook's contract forbids both. With no hook installed the cost is one load [est. under 1 ns].
+Installed with define-err's `set_creation_hook`; report-err calls the hook once for every `Error` it creates (not for context layers). Since `0.5` (HOOK-01). The hook receives the origin location, the explicit code, and the root's type name, and may add fields (shown under `Fields:` and kept in the record) and kinds. report-err owns the guards: a hook that creates an `Error` on the same thread is not called again for it (with `std`); a hook that panics leaves the field `creation_hook = "panicked"` and the error is still created (with `std` and unwinding). Without `std` the hook's contract forbids both. At most 32 fields are kept, each charged against `max_bytes`. With no hook installed the cost is one load [est. under 1 ns].
 
 ```rust
 use define_err::{Annotate, CreationHook, CreationInfo};
@@ -1254,7 +1254,7 @@ error.render(&mut text, RenderStyle::Report)?;
 
 ## `testing`
 
-Feature `testing`. Since `0.5` (TST-01).
+Feature `testing` (works without `std`). Since `0.5` (TST-01).
 
 ```rust
 pub mod testing {

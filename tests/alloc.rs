@@ -303,3 +303,25 @@ fn test_alloc_first_trace_is_one_block_then_none_to_the_budget() {
     let (_, count) = allocs(|| error.trace().trace().trace());
     assert_eq!(count, 0);
 }
+
+#[test]
+fn test_alloc_report_without_a_reporter_is_free() {
+    // PLAN 7.16: the flag and one load.
+    let error = err!("x");
+    let (first, count) = allocs(|| error.report());
+    assert!(first);
+    assert_eq!(count, 0);
+    let (again, count) = allocs(|| error.report());
+    assert!(!again);
+    assert_eq!(count, 0);
+}
+
+#[test]
+fn test_alloc_group_and_suppress() {
+    let (group, count) = allocs(|| Error::group("g", [err!("a"), err!("b")]));
+    // The group's node, its extension block, the children's vector, and the
+    // two children.
+    assert_eq!(count, 5);
+    let (_, count) = allocs(|| group.find::<io::Error>());
+    assert_eq!(count, 0);
+}
