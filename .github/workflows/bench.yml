@@ -1,0 +1,62 @@
+name: Benchmarks
+
+# The measured comparison of PLAN 11: report-err against anyhow, eyre,
+# error-stack, and Box<dyn Error> on Linux x86_64, Windows x86_64, and Linux
+# aarch64. Ratios come from the same run on the same runner, so the runner's
+# own speed cancels out. The gate fails a ratio more than 5% worse than the
+# stored baseline (benches/baseline.json).
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bench:
+    name: Benchmarks (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+          - os: windows-latest
+            platform: windows-x86_64
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: benches
+      - name: Run
+        shell: bash
+        run: |
+          unset RUST_BACKTRACE RUST_LIB_BACKTRACE
+          cargo bench --manifest-path benches/Cargo.toml -- --warm-up-time 1 --measurement-time 3 --noplot
+      - name: Run B18 with mimalloc
+        if: matrix.platform != 'windows-x86_64'
+        shell: bash
+        run: cargo bench --manifest-path benches/Cargo.toml --features mimalloc --bench extra -- contention --warm-up-time 1 --measurement-time 3 --noplot
+      - name: Ratios and the 5% gate
+        shell: bash
+        run: |
+          python benches/ratios.py benches/target/criterion ${{ matrix.platform }} --baseline benches/baseline.json --write-baseline measured.json | tee ratios.md
+          cat ratios.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-${{ matrix.platform }}
+          path: |
+            ratios.md
+            measured.json
+            benches/target/criterion/**/new/*.json
