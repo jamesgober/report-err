@@ -36,13 +36,13 @@ Exit: a kraken branch migrated by the `PLAN.md` 8.14.1 pass compiles and passes 
 - [x] kraken trial migration (2026-10-29): 2 manifest lines and 36 source lines changed by the find-and-replace pass, no hand edits; 1,974 tests passed with report-err as with anyhow, and the same 3 tests failed with both (they link a native program; "Linking failed" on the machine used). Details in `docs/MIGRATING.md`.
 - [x] Benchmarks against anyhow (PLAN 11.4). One measured exception recorded for 0.6: `{:#}` (D-022).
 
-## v0.4.0 - Extended: codes, sections, attachments, trace, exit codes
-API: ROOT-04, ERR-11 to ERR-15, ERR-18, CTX-03 to CTX-06, MAC-04, ATT-01 to ATT-07, TRC-01 to TRC-05, CFG-05, MAIN-02, MAIN-03, HOOK-05.
-Requires: define-err published (0.3 or later) with its interface locked at its 0.2.
-Exit: a CLI (cli-forge or hive-exec, James's choice) builds against 0.4 with `fn main() -> ExitReport` and category exit codes.
-- [ ] define-err added by published version; codes through `identify` and `innermost_code`; catalogs; `from_info`.
-- [ ] `ExitReport` with exit-code selection and terminal escaping; backtraces; trace and trail; attachments and sections; the remaining `{:?}` blocks.
-- [ ] Edge cases E-50 to E-56, E-66 to E-80, E-93, E-94.
+## v0.4.0 - Extended: codes, sections, attachments, trace, exit codes (DONE, 2026-11-02)
+
+Requires: define-err 0.4 (codes, severity, categories, kinds, the identity probe).
+Exit: a CLI builds against 0.4 with `fn main() -> ExitReport` and category exit codes. Met on a copy of cli-forge (2026-11-02): it builds with `fn main() -> ExitReport`, exits 0 on success and 66 on a missing file. The trial found one bug, a location lost in `ExitReport::from`, fixed before the release and covered by `test_converted_error_keeps_the_location_of_the_into`.
+- [x] define-err 0.4 by published version; codes through `identify` and `innermost_code`; catalogs (CFG-05); `from_info` (ERR-18, HOOK-05); code-first macro arms (MAC-04); `coded` on `Result` and `Option` (CTX-03); severity, category, kinds, public message (ERR-11 to ERR-15); the category step of the exit code; the `Code:` block of the report.
+- [x] Attachments and `attach_display` (ATT-01 to ATT-04), sections (ATT-05 to ATT-07, CTX-04), `attach` and `trace` on `Context` (CTX-05, CTX-06), trace points and the trail (TRC-01 to TRC-03), lazy backtraces captured at the root only (TRC-04, TRC-05), `ExitReport` with terminal and bidirectional-control escaping and a 1 MiB cap (MAIN-02), `exit_code` and `with_exit_code` (MAIN-03), `Ok` (ROOT-04); the report's sections, `Trace:`, `Attachments:`, `Omitted:`, and `Backtrace:` blocks.
+- [x] Edge cases E-50 to E-56 (`tests/codes.rs`, `tests/catalog.rs`), E-66 to E-80 (`tests/extended.rs`), E-69, E-70, E-93, E-94 as subprocesses (`tests/exit.rs`).
 
 ## v0.5.0 - Feature complete
 API: ERR-16, CTX-07, CHN-03 to CHN-06, GRP-01 to GRP-07, SUP-01 to SUP-04, CFG-01 to CFG-04, MAIN-04, BND-01 to BND-03, HOOK-01 to HOOK-04, STD-04, TST-01.
@@ -56,6 +56,7 @@ Exit: every `PLAN.md` 11.1 target measured; each met or its reason recorded and 
 - [ ] Benchmarks B1 to B18 against anyhow, eyre, error-stack, and `Box<dyn Error>` on Windows, Linux, and aarch64.
 - [ ] RD-14 decided with numbers; the success-path finding re-measured on aarch64.
 - [ ] `docs/PERFORMANCE.md`; criterion baselines; the 5% regression gate.
+- [ ] From 0.4.0 (D-038), on a quiet machine: B6 against its within-5% target, B9 (drop) against its 0.3.0 lead, and B13 against an allowance re-set for a report of equal content; B12 (D-022) as before.
 
 ## v0.7.0 - Hardening
 Exit: no open finding; every threat has a passing attack test.
@@ -68,9 +69,27 @@ Exit: both migrations green; every surprise fixed or recorded in `docs/MIGRATING
 - [ ] One more application migrated (a Hive DB tool or WASP boot code) using codes, `ExitReport`, and `report()`.
 
 ## v0.9.0 - Beta and release candidates
-Exit: two weeks without an API change; every document checked against the build; James's review done.
+Exit: two weeks without an API change; every document checked against the build; James's review done; the pre-1.0 polish below complete.
 - [ ] **James's pre-1.0 review** of the API and anything he wants added before 1.0.
 - [ ] API frozen; `docs/STABILITY-1.0.md` drafted with the requirement-to-test map.
+
+## v0.9.x - Pre-1.0 polish (before any `1.0.0-rc`)
+James's standing rule (2026-10-29): "make sure to go back and fix any issues / perf tune / etc before we get close to release." Nothing accepted earlier in the series becomes final silently. This milestone runs inside 0.9.x and must be complete before the first `1.0.0-rc`; whatever is still open afterwards goes, with its reason and numbers, into the 1.0 readiness note for James (`docs/STABILITY-1.0.md`, section "Open items").
+Exit: every item below is fixed, or measured again and listed in the readiness note with its reason; the performance pass and the security and `unsafe` review are recorded with dates, hardware, and results.
+- [ ] **Revisit every accepted gap, deferred item, known issue, and missed target.** The list as of 2026-10-29 (add to it as the series goes; `PLAN.md` decision log is the source):
+  - D-022: `{:#}` was 2.0 times slower than anyhow at 0.3 (the de-duplication buffer). Target: at least level with anyhow.
+  - B13: `{:?}` was 16% slower than anyhow at 0.3 (within the 20% allowed, but recorded). Re-measure and tune.
+  - D-011: the hand-written `source()` walk. Met at 0.3 (level at one layer, 11% to 18% faster from three); re-measure on Linux and aarch64 and keep the within-5% target as a regression gate.
+  - D-020: the chain has no repeat check, only the 128-link budget. Look again for a deterministic way to stop a cycle early.
+  - D-021: compile-fail cases are doc tests, not trybuild (no checked error text). Decide whether the messages themselves need a check.
+  - D-024: what Miri does not run (doc tests, the allocation-count binary, file-reading tests). Find another way to cover each, or record why none is needed.
+  - D-026: a boxed root answers `downcast_ref` only as `Box<dyn Error>`. Revisit once the API is otherwise frozen.
+  - D-027 (`Trace:` printed only when the error travelled) and D-028 (`None` with a section becomes `no value`): confirm with real use from the 0.8 migrations.
+  - RD-14 (one-allocation formatted messages, decided at 0.6), and every 11.1 target that 0.6 recorded as missed or as an exception.
+  - Every edge case or threat test that a version marked as partial or skipped.
+- [ ] **Fresh performance tuning pass** over every benchmark of `PLAN.md` 11.1 against anyhow, eyre, and error-stack, on Windows, Linux, and aarch64, with criterion baselines refreshed; each regression or missed target fixed or listed.
+- [ ] **Security and `unsafe` review, again**: `src/raw.rs` line by line against `docs/UNSAFE.md` (every `SAFETY:` comment still true, I-1 to I-13 and any later invariant still tested), Miri under both models and AddressSanitizer on the whole suite, fuzzing re-run, and every threat T1 to T16 re-checked against the code as it stands.
+- [ ] The 1.0 readiness note lists every item still open, with its numbers and reason, for James's decision.
 
 ## v1.0.0 - Stable
 Exit: the audit passes, the definition of done in `DIRECTIVES.md` and `PLAN.md` section 16 holds, and James approves.

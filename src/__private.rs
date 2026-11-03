@@ -9,6 +9,8 @@ pub use crate::error::IntoErrorWithContext;
 
 use core::fmt;
 
+use define_err::Code;
+
 use crate::error::Error;
 
 /// `err!("literal")`: a literal with no arguments is stored as
@@ -20,6 +22,29 @@ pub fn format_err(args: fmt::Arguments<'_>) -> Error {
         Some(message) => Error::msg(message),
         None => Error::msg(alloc::fmt::format(args)),
     }
+}
+
+/// The first argument of a code-first macro arm.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a define-err `Code`",
+    label = "the argument before the format string must be a `Code`",
+    note = "use a code constant such as `DbError::TIMEOUT`, or `define_err::code!(\"DB\", 42)`"
+)]
+pub trait IsCode {
+    /// The code.
+    fn into_code(self) -> Code;
+}
+
+impl IsCode for Code {
+    fn into_code(self) -> Code {
+        self
+    }
+}
+
+/// `err!(CODE, "...")`: sets the code on the error the rest made.
+#[must_use = "an error does nothing until it is returned or reported"]
+pub fn coded<C: IsCode>(code: C, error: Error) -> Error {
+    error.coded(code.into_code())
 }
 
 /// Chooses at compile time between an error value and a message, by

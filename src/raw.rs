@@ -22,7 +22,11 @@ use core::fmt::{self, Debug, Display};
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::panic::Location;
 use core::ptr::{self, addr_of, addr_of_mut, NonNull};
+use core::sync::atomic::{AtomicPtr, Ordering};
 
+use define_err::{Code, ErrorInfo, Severity};
+
+use crate::ext::Extras;
 use crate::frame::FrameValue;
 
 /// The trait object every layer of an error is seen as.
@@ -34,6 +38,9 @@ const INLINE: usize = 4;
 /// Context layers kept at the inner end when `max_frames` is reached.
 const KEEP_INNER: usize = 8;
 
+/// Turns a node into its payload as `ErrorInfo`.
+type InfoFn = unsafe fn(NonNull<Header>) -> NonNull<dyn ErrorInfo>;
+
 /// The functions that know the concrete payload type of one node.
 struct VTable {
     /// Frees the whole node, payload included.
@@ -44,6 +51,8 @@ struct VTable {
     take: unsafe fn(NonNull<Header>, NonNull<u8>),
     /// The type a caller downcasts to: `E`, or `M` for a message wrapper.
     type_id: fn() -> TypeId,
+    /// The payload as `ErrorInfo`, for an error built with `from_info`.
+    info: Option<InfoFn>,
 }
 
 /// The fixed part of every node; the first field of `Node<P>` (I-1).
@@ -51,6 +60,8 @@ struct VTable {
 pub(crate) struct Header {
     vtable: &'static VTable,
     origin: &'static Location<'static>,
+    /// The code set with `coded`; a found code is read from the chain.
+    code: Option<Code>,
     /// The extension block, made with `Box::leak` and freed in `Drop`.
     ext: Option<NonNull<Ext>>,
     /// Context layers stored: `first`, then `Ext::inline`, then `Ext::spill`.
@@ -59,8 +70,10 @@ pub(crate) struct Header {
     /// Of those, the layers holding a value other than a string, so a
     /// downcast to any other type can skip the layers when there are none.
     values: u16,
-    /// Context layers dropped at `max_frames` (saturating).
-    omitted: u32,
+    /// The severity set with `with_severity`.
+    severity: Option<Severity>,
+    /// The exit code set with `with_exit_code`; 0 means none.
+    exit: u8,
     /// The innermost context layer; initialised when `frames >= 1`.
     first: MaybeUninit<Frame>,
 }
@@ -77,6 +90,9 @@ struct Ext {
     inline: [MaybeUninit<Frame>; INLINE],
     /// Layers 6 and up, innermost first.
     spill: Vec<Frame>,
+    /// Attachments, sections, trace points, and the rest (safe data; reached
+    /// by projection to this field only, I-13).
+    extras: Extras,
 }
 
 /// One context layer.
@@ -174,6 +190,17 @@ unsafe fn drop_node<P>(node: NonNull<Header>) {
 /// # Safety
 ///
 /// `node` is a live node made by `RawError::make::<P, _>` (I-2).
+unsafe fn info_of<E: ErrorInfo + 'static>(node: NonNull<Header>) -> NonNull<dyn ErrorInfo> {
+    // SAFETY: I-3, I-13: a projection to the payload field; no reference is made.
+    let payload: *mut E = unsafe { addr_of_mut!((*node.cast::<Node<E>>().as_ptr()).payload) };
+    let payload: *mut dyn ErrorInfo = payload;
+    // SAFETY: a projection from the non-null node pointer is not null.
+    unsafe { NonNull::new_unchecked(payload) }
+}
+
+/// # Safety
+///
+/// `node` is a live node made by `RawError::make::<P, _>` (I-2).
 unsafe fn payload_of<P: StdError + Send + Sync + 'static>(
     node: NonNull<Header>,
 ) -> NonNull<DynError> {
@@ -221,6 +248,18 @@ fn vtable<P: StdError + Send + Sync + 'static, U: 'static>() -> &'static VTable 
         payload: payload_of::<P>,
         take: take_node::<P>,
         type_id: TypeId::of::<U>,
+        info: None,
+    }
+}
+
+/// The vtable of a node whose payload `E` also answers as `ErrorInfo`.
+fn vtable_info<E: ErrorInfo + Send + Sync + 'static>() -> &'static VTable {
+    &VTable {
+        drop: drop_node::<E>,
+        payload: payload_of::<E>,
+        take: take_node::<E>,
+        type_id: TypeId::of::<E>,
+        info: Some(info_of::<E>),
     }
 }
 
@@ -230,6 +269,7 @@ fn vtable_boxed() -> &'static VTable {
         payload: payload_of_boxed,
         take: take_node::<BoxedError>,
         type_id: TypeId::of::<Box<DynError>>,
+        info: None,
     }
 }
 
@@ -253,10 +293,12 @@ impl RawError {
         let header = Header {
             vtable,
             origin,
+            code: None,
             ext: None,
             frames: 0,
             values: 0,
-            omitted: 0,
+            severity: None,
+            exit: 0,
             first: MaybeUninit::uninit(),
         };
         let node: &mut Node<P> = Box::leak(Box::new(Node { header, payload }));
@@ -294,6 +336,13 @@ impl RawError {
         )
     }
 
+    pub(crate) fn from_info<E>(error: E, origin: &'static Location<'static>) -> RawError
+    where
+        E: ErrorInfo + Send + Sync + 'static,
+    {
+        RawError::make(error, vtable_info::<E>(), origin)
+    }
+
     pub(crate) fn from_boxed(error: Box<DynError>, origin: &'static Location<'static>) -> RawError {
         RawError::make(BoxedError(error), vtable_boxed(), origin)
     }
@@ -315,13 +364,73 @@ impl RawError {
         self.header().frames as usize
     }
 
+    /// Context layers added in all, including those a budget dropped.
+    pub(crate) fn pushed(&self) -> u32 {
+        u32::from(self.header().frames).saturating_add(self.omitted())
+    }
+
+    pub(crate) fn code(&self) -> Option<Code> {
+        self.header().code
+    }
+
+    pub(crate) fn set_code(&mut self, code: Code) {
+        self.header_mut().code = Some(code);
+    }
+
+    pub(crate) fn severity(&self) -> Option<Severity> {
+        self.header().severity
+    }
+
+    pub(crate) fn set_severity(&mut self, severity: Severity) {
+        self.header_mut().severity = Some(severity);
+    }
+
+    /// The explicit exit code, if one was set.
+    pub(crate) fn exit(&self) -> Option<u8> {
+        Some(self.header().exit).filter(|code| *code != 0)
+    }
+
+    pub(crate) fn set_exit(&mut self, code: u8) {
+        self.header_mut().exit = code;
+    }
+
+    /// The root as `ErrorInfo`, for an error built with `from_info`.
+    pub(crate) fn info(&self) -> Option<&dyn ErrorInfo> {
+        let info = self.vtable().info?;
+        // SAFETY: I-2: the vtable belongs to this node.
+        let payload = unsafe { info(self.node) };
+        // SAFETY: I-3: the payload is live and shared for as long as `self` is.
+        Some(unsafe { payload.as_ref() })
+    }
+
+    /// The extension block's extras, if the block exists.
+    pub(crate) fn extras(&self) -> Option<&Extras> {
+        let ext = self.header().ext?;
+        // SAFETY: I-3, I-13: a projection to the `extras` field of a live block.
+        let field = unsafe { addr_of!((*ext.as_ptr()).extras) };
+        // SAFETY: the field is initialised; the reference covers it only and
+        // lives as long as `&self`.
+        Some(unsafe { &*field })
+    }
+
+    /// The extras, allocating the extension block on first use.
+    pub(crate) fn extras_mut(&mut self) -> &mut Extras {
+        let ext = self.ext_or_alloc();
+        // SAFETY: I-3, I-13: a projection to the `extras` field of a live block.
+        let field = unsafe { addr_of_mut!((*ext.as_ptr()).extras) };
+        // SAFETY: I-8: unique access through `&mut self`; the reference covers
+        // the field only.
+        unsafe { &mut *field }
+    }
+
     /// Whether any layer holds a value other than a string.
     pub(crate) fn has_value_frames(&self) -> bool {
         self.header().values > 0
     }
 
+    /// Context layers dropped at `max_frames`.
     pub(crate) fn omitted(&self) -> u32 {
-        self.header().omitted
+        self.extras().map_or(0, |e| e.omitted.frames)
     }
 
     /// The type `payload_ref` answers to.
@@ -435,8 +544,8 @@ impl RawError {
         if self.frames() >= max_frames {
             let index = KEEP_INNER.min(self.frames() - 1);
             self.remove_frame(index);
-            let header = self.header_mut();
-            header.omitted = header.omitted.saturating_add(1);
+            let omitted = &mut self.extras_mut().omitted;
+            omitted.frames = omitted.frames.saturating_add(1);
         }
         let index = self.frames();
         let link = if index == 0 {
@@ -502,6 +611,7 @@ impl RawError {
                 MaybeUninit::uninit(),
             ],
             spill: Vec::new(),
+            extras: Extras::default(),
         };
         let ext = NonNull::from(Box::leak(Box::new(block)));
         self.header_mut().ext = Some(ext);
@@ -666,9 +776,48 @@ impl StdError for Frame {
     }
 }
 
+/// A value set once, at the start of a process, and read with one acquire
+/// load after that (I-14). A second set gives the value back.
+pub(crate) struct WriteOnce<T: 'static> {
+    slot: AtomicPtr<T>,
+}
+
+impl<T: Send + Sync + 'static> WriteOnce<T> {
+    pub(crate) const fn new() -> WriteOnce<T> {
+        WriteOnce {
+            slot: AtomicPtr::new(ptr::null_mut()),
+        }
+    }
+
+    /// Stores `value` if nothing is stored yet.
+    pub(crate) fn set(&self, value: T) -> Result<(), T> {
+        let raw = Box::into_raw(Box::new(value));
+        match self
+            .slot
+            .compare_exchange(ptr::null_mut(), raw, Ordering::AcqRel, Ordering::Acquire)
+        {
+            Ok(_) => Ok(()),
+            Err(_) => {
+                // SAFETY: I-14: `raw` lost the race, so nothing else holds it;
+                // this is the box made above.
+                Err(*unsafe { Box::from_raw(raw) })
+            }
+        }
+    }
+
+    pub(crate) fn get(&self) -> Option<&'static T> {
+        let value = NonNull::new(self.slot.load(Ordering::Acquire))?;
+        // SAFETY: I-14: a stored pointer came from a box that is never freed
+        // or written again, and the acquire load pairs with the release in `set`.
+        Some(unsafe { value.as_ref() })
+    }
+}
+
 // The layout the design depends on (PLAN 7.2, 7.6.1).
 const _: () = assert!(core::mem::size_of::<Frame>() == 5 * core::mem::size_of::<usize>());
 const _: () = assert!(core::mem::align_of::<Header>() >= 2);
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(core::mem::size_of::<Header>() == 80);
 
 #[cfg(test)]
 mod tests {
@@ -909,6 +1058,40 @@ mod tests {
         raw.push_frame(here(), FrameValue::new("b"), 64);
         let result = std::panic::catch_unwind(core::panic::AssertUnwindSafe(move || drop(raw)));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_raw_write_once_keeps_the_first_value() {
+        static SLOT: WriteOnce<u32> = WriteOnce::new();
+        assert_eq!(SLOT.get(), None);
+        assert_eq!(SLOT.set(7), Ok(()));
+        assert_eq!(SLOT.set(8), Err(8));
+        assert_eq!(SLOT.get(), Some(&7));
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_raw_write_once_one_thread_wins() {
+        static SLOT: WriteOnce<u32> = WriteOnce::new();
+        let wins: u32 = std::thread::scope(|s| {
+            let racers: Vec<_> = (1..=4u32)
+                .map(|n| s.spawn(move || u32::from(SLOT.set(n).is_ok())))
+                .collect();
+            racers.into_iter().map(|r| r.join().unwrap_or(0)).sum()
+        });
+        assert_eq!(wins, 1);
+        assert!(SLOT.get().is_some_and(|n| (1..=4).contains(n)));
+    }
+
+    #[test]
+    fn test_raw_header_fields_are_independent() {
+        let mut raw = RawError::from_error(Root("r"), here());
+        assert!(raw.code().is_none() && raw.severity().is_none() && raw.exit().is_none());
+        raw.set_severity(Severity::CRITICAL);
+        raw.set_exit(64);
+        assert_eq!(raw.severity(), Some(Severity::CRITICAL));
+        assert_eq!(raw.exit(), Some(64));
+        assert!(raw.info().is_none());
     }
 
     #[test]

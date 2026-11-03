@@ -73,9 +73,9 @@
 //!
 //! ## Status
 //!
-//! `0.3.0` ships the anyhow surface. Codes, attachments, sections, the
-//! propagation trace, and exit codes arrive in `0.4.0`; several causes,
-//! suppressed errors, budgets, and the panic boundary in `0.5.0`. The whole
+//! `0.4.0` ships the anyhow surface, codes, attachments, sections, the
+//! propagation trace, and exit codes. Several causes,
+//! suppressed errors, budgets, and the panic boundary arrive in `0.5.0`. The whole
 //! API, with the version each item arrives in, is in `docs/API.md` in the
 //! [repository](https://github.com/jamesgober/report-err).
 
@@ -107,8 +107,6 @@
 )]
 
 extern crate alloc;
-// define-err's types are first used in 0.4.0 (dev/PLAN.md, D-019).
-use define_err as _;
 #[cfg(feature = "std")]
 extern crate std;
 
@@ -120,9 +118,14 @@ compile_error!(
      targets without it (such as thumbv6m-none-eabi) are not supported"
 );
 
+mod attach;
 mod chain;
+mod codes;
 mod context;
 mod error;
+#[cfg(feature = "std")]
+mod exit;
+mod ext;
 mod format;
 mod frame;
 mod limits;
@@ -130,13 +133,22 @@ mod macros;
 #[allow(unsafe_code)]
 mod raw;
 mod std_interop;
+mod trace;
 
 #[doc(hidden)]
 pub mod __private;
 
+pub use crate::attach::{Attachments, Section, Sections};
 pub use crate::chain::Chain;
 pub use crate::context::Context;
 pub use crate::error::Error;
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+pub use crate::exit::ExitReport;
+pub use crate::ext::SectionKind;
+pub use crate::limits::{configure_catalogs, ConfigureError};
+pub use crate::trace::{Step, StepKind, Trail};
+pub use define_err::{Category, Code, Kinds, Severity};
 
 /// `Result<T, Error>`, with `Error` as the default error type, so
 /// `Result<T>` reads like anyhow's. `Result<T, MyError>` still works.
@@ -148,6 +160,22 @@ pub use crate::error::Error;
 /// assert_eq!(parse(" 7 ").unwrap(), 7);
 /// ```
 pub type Result<T, E = Error> = core::result::Result<T, E>;
+
+/// `Ok(value)` as a `Result<T>`, for closures and blocks whose error type
+/// cannot be inferred (anyhow's helper). Not in the prelude: a glob import
+/// would shadow `Result::Ok` in patterns.
+///
+/// ```
+/// let doubled = (|| {
+///     let n: u32 = "7".parse()?;
+///     report_err::Ok(n * 2)
+/// })();
+/// assert_eq!(doubled.ok(), Some(14));
+/// ```
+#[allow(non_snake_case)]
+pub fn Ok<T>(value: T) -> Result<T> {
+    core::result::Result::Ok(value)
+}
 
 /// The Tier 1 names in one import: `Error`, `Result`, `Context`, `err!`,
 /// `bail!`, `ensure!`.
@@ -236,6 +264,16 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// ```compile_fail
 /// let a = report_err::err!("x");
 /// let b = a.clone();
+/// ```
+///
+/// The argument before a format string must be a define-err `Code`:
+///
+/// ```compile_fail
+/// let _ = report_err::err!("not a code", "message");
+/// ```
+///
+/// ```compile_fail
+/// let _ = report_err::err!(7, "message");
 /// ```
 #[cfg(doctest)]
 pub struct CompileFail;

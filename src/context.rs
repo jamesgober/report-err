@@ -3,6 +3,8 @@
 use core::convert::Infallible;
 use core::fmt::Display;
 
+use define_err::Code;
+
 use crate::error::{Error, IntoErrorWithContext};
 
 pub(crate) mod private {
@@ -75,6 +77,110 @@ pub trait Context<T, E>: private::Sealed {
     where
         C: Display + Send + Sync + 'static,
         F: FnOnce() -> C;
+    /// Sets the error's code (see [`Error::coded`]). On `None`, the error's
+    /// message is the code's catalog title when catalogs are configured,
+    /// otherwise the code itself.
+    ///
+    /// ```
+    /// use report_err::Context;
+    ///
+    /// let code = define_err::code!("USER", 4);
+    /// let found: Option<&str> = None;
+    /// let error = found.coded(code).unwrap_err();
+    /// assert_eq!(error.code(), Some(code));
+    /// assert_eq!(error.to_string(), "USER-0004");
+    /// ```
+    #[track_caller]
+    fn coded(self, code: Code) -> Result<T, Error>;
+
+    /// Adds a note to the error (see [`Error::note`]). On `None`, the error's
+    /// root is the message `no value`; give it a context to say what was
+    /// missing.
+    ///
+    /// ```
+    /// use report_err::Context;
+    ///
+    /// let r: Result<(), std::io::Error> = Err(std::io::Error::other("busy"));
+    /// let error = r.note("the lock is held by another process").unwrap_err();
+    /// assert_eq!(error.sections().count(), 1);
+    /// ```
+    #[track_caller]
+    fn note<S>(self, text: S) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static;
+
+    /// As [`note`](Context::note), with the text built only on the error path.
+    #[track_caller]
+    fn with_note<S, F>(self, f: F) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static,
+        F: FnOnce() -> S;
+
+    /// Adds a warning to the error (see [`Error::warning`]).
+    #[track_caller]
+    fn warning<S>(self, text: S) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static;
+
+    /// As [`warning`](Context::warning), with the text built only on the error
+    /// path.
+    #[track_caller]
+    fn with_warning<S, F>(self, f: F) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static,
+        F: FnOnce() -> S;
+
+    /// Adds a suggestion to the error (see [`Error::suggestion`]).
+    ///
+    /// ```
+    /// use report_err::Context;
+    ///
+    /// let found: Option<&str> = None;
+    /// let error = found.context("no config").suggestion("run `tool init`").unwrap_err();
+    /// assert!(format!("{error:?}").contains("Suggestion: run `tool init`"));
+    /// ```
+    #[track_caller]
+    fn suggestion<S>(self, text: S) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static;
+
+    /// As [`suggestion`](Context::suggestion), with the text built only on the
+    /// error path.
+    #[track_caller]
+    fn with_suggestion<S, F>(self, f: F) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static,
+        F: FnOnce() -> S;
+
+    /// Attaches a value to the error (see [`Error::attach`]).
+    ///
+    /// ```
+    /// use report_err::Context;
+    ///
+    /// let r: Result<(), std::io::Error> = Err(std::io::Error::other("busy"));
+    /// let error = r.attach(42u64).unwrap_err();
+    /// assert_eq!(error.attachment::<u64>(), Some(&42));
+    /// ```
+    #[track_caller]
+    fn attach<A>(self, value: A) -> Result<T, Error>
+    where
+        A: Send + Sync + 'static;
+
+    /// Records the caller's location in the error's trail (see
+    /// [`Error::trace`]): a `?` that does not change the error type leaves no
+    /// trace otherwise.
+    ///
+    /// ```
+    /// use report_err::{Context, Result};
+    ///
+    /// fn step() -> Result<()> {
+    ///     Err(report_err::err!("x"))
+    /// }
+    /// let error = step().trace().unwrap_err();
+    /// assert_eq!(error.trail().count(), 2);
+    /// ```
+    #[track_caller]
+    fn trace(self) -> Result<T, Error>;
 }
 
 impl<T, E> Context<T, E> for Result<T, E>
@@ -103,6 +209,101 @@ where
             Err(error) => Err(error.into_error_with(f())),
         }
     }
+
+    #[track_caller]
+    fn coded(self, code: Code) -> Result<T, Error> {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_error().coded(code)),
+        }
+    }
+    #[track_caller]
+    fn note<S>(self, text: S) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static,
+    {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_error().note(text)),
+        }
+    }
+
+    #[track_caller]
+    fn with_note<S, F>(self, f: F) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static,
+        F: FnOnce() -> S,
+    {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_error().note(f())),
+        }
+    }
+
+    #[track_caller]
+    fn warning<S>(self, text: S) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static,
+    {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_error().warning(text)),
+        }
+    }
+
+    #[track_caller]
+    fn with_warning<S, F>(self, f: F) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static,
+        F: FnOnce() -> S,
+    {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_error().warning(f())),
+        }
+    }
+
+    #[track_caller]
+    fn suggestion<S>(self, text: S) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static,
+    {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_error().suggestion(text)),
+        }
+    }
+
+    #[track_caller]
+    fn with_suggestion<S, F>(self, f: F) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static,
+        F: FnOnce() -> S,
+    {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_error().suggestion(f())),
+        }
+    }
+
+    #[track_caller]
+    fn attach<A>(self, value_to_attach: A) -> Result<T, Error>
+    where
+        A: Send + Sync + 'static,
+    {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_error().attach(value_to_attach)),
+        }
+    }
+
+    #[track_caller]
+    fn trace(self) -> Result<T, Error> {
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.into_error().trace()),
+        }
+    }
 }
 
 impl<T> Context<T, Infallible> for Option<T> {
@@ -126,6 +327,101 @@ impl<T> Context<T, Infallible> for Option<T> {
         match self {
             Some(value) => Ok(value),
             None => Err(Error::from_display(f())),
+        }
+    }
+
+    #[track_caller]
+    fn coded(self, code: Code) -> Result<T, Error> {
+        match self {
+            Some(value) => Ok(value),
+            None => Err(Error::from_code(code)),
+        }
+    }
+    #[track_caller]
+    fn note<S>(self, text: S) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static,
+    {
+        match self {
+            Some(value) => Ok(value),
+            None => Err(Error::from_display("no value").note(text)),
+        }
+    }
+
+    #[track_caller]
+    fn with_note<S, F>(self, f: F) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static,
+        F: FnOnce() -> S,
+    {
+        match self {
+            Some(value) => Ok(value),
+            None => Err(Error::from_display("no value").note(f())),
+        }
+    }
+
+    #[track_caller]
+    fn warning<S>(self, text: S) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static,
+    {
+        match self {
+            Some(value) => Ok(value),
+            None => Err(Error::from_display("no value").warning(text)),
+        }
+    }
+
+    #[track_caller]
+    fn with_warning<S, F>(self, f: F) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static,
+        F: FnOnce() -> S,
+    {
+        match self {
+            Some(value) => Ok(value),
+            None => Err(Error::from_display("no value").warning(f())),
+        }
+    }
+
+    #[track_caller]
+    fn suggestion<S>(self, text: S) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static,
+    {
+        match self {
+            Some(value) => Ok(value),
+            None => Err(Error::from_display("no value").suggestion(text)),
+        }
+    }
+
+    #[track_caller]
+    fn with_suggestion<S, F>(self, f: F) -> Result<T, Error>
+    where
+        S: Display + Send + Sync + 'static,
+        F: FnOnce() -> S,
+    {
+        match self {
+            Some(value) => Ok(value),
+            None => Err(Error::from_display("no value").suggestion(f())),
+        }
+    }
+
+    #[track_caller]
+    fn attach<A>(self, value_to_attach: A) -> Result<T, Error>
+    where
+        A: Send + Sync + 'static,
+    {
+        match self {
+            Some(value) => Ok(value),
+            None => Err(Error::from_display("no value").attach(value_to_attach)),
+        }
+    }
+
+    #[track_caller]
+    fn trace(self) -> Result<T, Error> {
+        match self {
+            Some(value) => Ok(value),
+            None => Err(Error::from_display("no value").trace()),
         }
     }
 }

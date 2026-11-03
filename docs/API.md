@@ -87,7 +87,7 @@ Costs are estimates (marked [est.]) until they are measured; numbers marked [mea
 
 ```toml
 [dependencies]
-report-err = "0.3"
+report-err = "0.4"
 ```
 
 ### Features
@@ -103,7 +103,7 @@ The crate is `#![no_std]` and needs `alloc`: an `Error` lives on the heap. `defa
 
 ```toml
 [dependencies]
-report-err = { version = "0.3", default-features = false }
+report-err = { version = "0.4", default-features = false }
 ```
 
 MSRV is 1.81, the first release with `core::error::Error`.
@@ -198,7 +198,7 @@ One type for any error. Since `0.3` (ERR-01).
 | Property | Value |
 |---|---|
 | Size | one machine word: `size_of::<Error>()`, `size_of::<Result<(), Error>>()`, and `size_of::<Option<Error>>()` all equal `size_of::<usize>()` (asserted at compile time) |
-| Heap | one allocation holding a 72-byte header (on 64-bit targets in 0.3; it grows when codes and flags join it in 0.4 and 0.5) and the root error inline; a second block only when a second context layer, an attachment, a section, a child, or a trace point is added |
+| Heap | one allocation holding an 80-byte header (on 64-bit targets; it grows when flags join it in 0.5) and the root error inline; a second block only when a second context layer, an attachment, a section, a child, or a trace point is added |
 | Traits | `Debug`, `Display`, `Deref<Target = dyn Error + Send + Sync + 'static>`, `DerefMut`, `AsRef<dyn Error + Send + Sync + 'static>`, `AsRef<dyn Error + 'static>`, `From<E>` for every `E: core::error::Error + Send + Sync + 'static`, `Send`, `Sync`, `Unpin`, `UnwindSafe`, `RefUnwindSafe` |
 | Not | `Clone` (an error is owned by one call path); `core::error::Error` itself (it could not and still convert from every error through `?`: [`Deref`](#deref-to-dyn-error-the-source-chain) gives the `&dyn Error`) |
 | `#[must_use]` | `Error` and every method that returns an `Error` or a `Result` |
@@ -347,7 +347,7 @@ eprintln!("created at {}", error.location());   // src/store.rs:88:21
 ### Codes, severity, category, kinds
 
 ```rust
-use define_err::{Code, Severity, Category, Kinds};
+pub use define_err::{Code, Severity, Category, Kinds};   // re-exported at the crate root
 
 impl Error {
     pub fn code(&self) -> Option<Code>;
@@ -364,18 +364,18 @@ impl Error {
 
 | Id | Method | Tier | Since | Answer |
 |---|---|---|---|---|
-| ERR-11 | `code` | 1 | 0.4 | the explicit code (`coded`, a code-first macro); else the innermost coded error in the chain, read through define-err's `innermost_code`; else `None` |
+| ERR-11 | `code` | 1 | 0.4 | the explicit code (`coded`, a code-first macro); else the innermost coded error in the chain, read through define-err's `innermost_code`; else the code of a `from_info` root; else `None` |
 | ERR-12 | `coded` | 1 | 0.4 | sets the explicit code, replacing an earlier one |
-| ERR-13 | `severity` | 2 | 0.4 | `with_severity`; else the coded error's identity; else, for an explicit code, its catalog entry ([`configure_catalogs`](#configure_catalogs)); else `FATAL` (21) for a panic; else the category's default severity |
-| ERR-13 | `category` | 2 | 0.4 | the coded error's identity; else the catalog entry of an explicit code; else `Category::from_io_kind` when the root is a `std::io::Error` (**std**); else `Internal` for a panic; else `Unknown` |
+| ERR-13 | `severity` | 2 | 0.4 | `with_severity`; else the coded error's identity (an uncoded defined root answers too); else, for an explicit code, its catalog entry ([`configure_catalogs`](#configure_catalogs)); else the `from_info` root; else `FATAL` (21) for a panic; else the category's default severity |
+| ERR-13 | `category` | 2 | 0.4 | the coded error's identity (an uncoded defined root answers too); else the catalog entry of an explicit code; else the `from_info` root; else `Category::from_io_kind` when the root is a `std::io::Error` (**std**); else `Internal` for a panic; else `Unknown` |
 | ERR-13 | `kinds` | 2 | 0.4 | `with_kind` bits, OR the coded error's kinds, OR the creation hook's kinds, OR `Kinds::PANIC` for a panic; `Kinds::ERROR` when empty |
 | ERR-14 | `with_severity`, `with_kind` | 2 | 0.4 | overrides; kinds are added with OR |
-| ERR-15 | `public_message` | 2 | 0.4 | the public message of the code: from the catalog entry, or from the root's `ErrorInfo` when the error was built with `from_info`; when only the identity is known, the category's default public message; `None` when there is no code |
+| ERR-15 | `public_message` | 2 | 0.4 | the public message of the code: from the catalog entry, or from the root's `ErrorInfo` when the error was built with `from_info`; when only the identity is known, the category's default public message (the identity probe carries no text, so a variant's `#[public]` needs a catalog or `from_info`); `None` when there is no code. A `from_info` root with a different code than the error's does not answer |
 | ERR-16 | `is_panic` | 2 | 0.5 | created by `boundary` or `from_panic` |
 
 Context layers never carry a code; children are not consulted (a group has its own code or none). `Display` of an error is a private message for logs; `public_message` and the category are the only parts meant for a client.
 
-Cost [est.]: `code` under 60 ns for a five-link chain (define-err's probe, about 10 ns per generated link); `coded`, `with_severity`, `with_kind` one store.
+Cost: `code` set by hand under 1 ns; `code` found under three contexts 44 to 80 ns [measured on a loaded machine, 0.4.0]; `coded`, `with_severity`, and `with_exit_code` one store; the first `with_kind` allocates the extension block if there is none.
 
 ```rust
 use report_err::{bail, Context, Result};
@@ -984,7 +984,7 @@ pub fn configure_catalogs(catalogs: &'static [&'static [define_err::CodeInfo]])
     -> core::result::Result<(), ConfigureError>;
 ```
 
-Optional, write once. Lets an explicit code (`coded`, a code-first macro) find its title, severity, category, kinds, and public message through define-err's `catalog::find`. Since `0.4` (CFG-05).
+Optional, write once (a second call returns `AlreadyConfigured` and the first value stays). Lets an explicit code (`coded`, a code-first macro) find its title, severity, category, kinds, and public message through define-err's `catalog::find`. Since `0.4` (CFG-05). One allocation, once; a read is one acquire load and the catalog search.
 
 ```rust
 static CATALOGS: &[&[define_err::CodeInfo]] = &[DbError::CATALOG, UserError::CATALOG];
@@ -1008,7 +1008,7 @@ Since `0.4` (`AlreadyConfigured`, for `configure_catalogs`) and `0.5` (CFG-04). 
 
 | Variant | `Display` |
 |---|---|
-| `AlreadyConfigured` | `limits were already configured; call configure once, at the start of main, before other threads start` (or `catalogs were already configured; ...`) |
+| `AlreadyConfigured` | `this setting was already configured; set it once, at the start of main, before other threads start` |
 | `OutOfRange` | `max_frames = 2 is outside 4..=4096; choose a value in that range` |
 
 ## `main`
@@ -1179,7 +1179,7 @@ impl Error {
 `from_info` creates an error like `Error::new` and keeps the root reachable as `&dyn ErrorInfo`, so per-value metadata the identity probe cannot carry (`retry_after`, `#[location]` fields) survives. `info` returns it, or `None` for an error built any other way.
 
 ```rust
-let error = Error::from_info(DbError::Busy { retry_after: Duration::from_millis(250) });
+let error = Error::from_info(DbError::Busy { wait: Duration::from_millis(250) });
 if let Some(after) = error.info().and_then(|i| i.retry_after()) {
     sleep(after);
 }

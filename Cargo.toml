@@ -3,7 +3,7 @@
 # =============================================================================
 [package]
 name    = "report-err"
-version = "0.3.0"
+version = "0.4.0"
 
 # Minimum Supported Rust Version (MSRV)
 # 1.81: `core::error::Error` is stable in `core` from 1.81, which the `no_std`
@@ -68,8 +68,7 @@ testing = []
 # define-err: codes, severity, categories, kinds, the identity probe, the
 # error record, and the reporting facade (dev/PLAN.md section 3.4). By
 # published version, never `path`; `alloc` always, `std` with ours (D-019).
-# Its types are first used in 0.4.0.
-define-err = { version = "0.2", default-features = false, features = ["alloc"] }
+define-err = { version = "0.4", default-features = false, features = ["alloc"] }
 
 
 # DEV DEPENDENCIES
@@ -95,3 +94,12 @@ lto           = "fat"
 codegen-units = 1
 panic         = "abort"
 strip         = "symbols"
+
+[[test]]
+name = "exit"
+harness = false
+required-features = ["std"]
+
+[[example]]
+name = "exit_report"
+required-features = ["std"]

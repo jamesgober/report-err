@@ -7,6 +7,7 @@
 ///   stored as `&'static str`, so nothing is allocated beyond the error;
 /// - a format string with arguments (or inline `{name}` captures) becomes a
 ///   formatted message root, a `String`;
+/// - a define-err `Code`, then a format string: the same, with the code set;
 /// - any other expression: an error value becomes the root as it is (still
 ///   downcastable to its type), and any other `Display + Debug` value
 ///   becomes a message root. The choice is made at compile time.
@@ -25,6 +26,10 @@
 /// assert_eq!(a.downcast_ref::<&str>(), Some(&"no input"));
 /// assert_eq!(b.to_string(), c.to_string());
 /// assert!(d.is::<std::io::Error>());
+///
+/// let code = define_err::code!("NET", 3);
+/// let e = err!(code, "no route to {port}");
+/// assert_eq!(e.code(), Some(code));
 /// ```
 #[macro_export]
 macro_rules! err {
@@ -33,6 +38,9 @@ macro_rules! err {
     };
     ($fmt:literal, $($arg:tt)*) => {
         $crate::Error::msg($crate::__private::format!($fmt, $($arg)*))
+    };
+    ($code:expr, $fmt:literal $(, $($arg:tt)*)?) => {
+        $crate::__private::coded($code, $crate::err!($fmt $(, $($arg)*)?))
     };
     ($error:expr $(,)?) => {{
         #[allow(unused_imports)]
@@ -112,6 +120,11 @@ macro_rules! ensure {
     ($cond:expr, $fmt:literal, $($arg:tt)*) => {
         if !$cond {
             $crate::bail!($fmt, $($arg)*)
+        }
+    };
+    ($cond:expr, $code:expr, $fmt:literal $(, $($arg:tt)*)?) => {
+        if !$cond {
+            $crate::bail!($code, $fmt $(, $($arg)*)?)
         }
     };
     ($cond:expr, $error:expr $(,)?) => {

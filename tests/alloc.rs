@@ -48,7 +48,18 @@ unsafe impl GlobalAlloc for Counting {
 static ALLOCATOR: Counting = Counting;
 
 /// Runs `f` and returns its value with the allocations and frees it made.
+///
+/// The first backtrace check in a process reads the environment once; it is
+/// done here, outside the counted region. Backtraces must be off: with them
+/// on, every new error also captures one, which is a different contract.
 fn counted<R>(f: impl FnOnce() -> R) -> (R, usize, usize) {
+    let backtrace = std::backtrace::Backtrace::capture();
+    assert_ne!(
+        backtrace.status(),
+        std::backtrace::BacktraceStatus::Captured,
+        "unset RUST_BACKTRACE (or set RUST_LIB_BACKTRACE=0) to run the allocation tests"
+    );
+    drop(backtrace);
     let a = ALLOCS.with(Cell::get);
     let d = FREES.with(Cell::get);
     let r = f();
@@ -242,4 +253,53 @@ fn test_alloc_into_std_is_one_whatever_the_depth() {
     let (error, n) = allocs(|| Error::from_boxed(boxed));
     assert_eq!(n, 0, "a box made by into_std gives the error back");
     drop(error);
+}
+
+#[test]
+fn test_alloc_codes_cost_nothing_beyond_the_error() {
+    // PLAN 7.5: the code, severity, and exit code live in the header.
+    let code = define_err::code!("APP", 1);
+    let (error, count) = allocs(|| {
+        err!("x")
+            .coded(code)
+            .with_severity(report_err::Severity::CRITICAL)
+            .with_exit_code(3)
+    });
+    assert_eq!(count, 1);
+    let (_, count) = allocs(|| {
+        (
+            error.code(),
+            error.severity(),
+            error.category(),
+            error.kinds(),
+            error.public_message(),
+            error.exit_code(),
+        )
+    });
+    assert_eq!(count, 0);
+}
+
+#[test]
+fn test_alloc_code_found_in_the_chain_reads_without_allocating() {
+    define_err::define_errors! {
+        namespace = "DB";
+        pub enum DbError {
+            #[code(1, help = "Raise the timeout.")]
+            #[category(Unavailable)]
+            Timeout => "query timed out",
+        }
+    }
+    let error = Error::new(DbError::Timeout);
+    let (code, count) = allocs(|| error.code());
+    assert!(code.is_some());
+    assert_eq!(count, 0);
+}
+
+#[test]
+fn test_alloc_first_trace_is_one_block_then_none_to_the_budget() {
+    let error = err!("x");
+    let (error, count) = allocs(|| error.trace());
+    assert_eq!(count, 1);
+    let (_, count) = allocs(|| error.trace().trace().trace());
+    assert_eq!(count, 0);
 }

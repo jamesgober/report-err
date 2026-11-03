@@ -66,7 +66,8 @@ impl Error {
             Ok(boxed) => boxed.0,
             Err(error) => Error {
                 raw: RawError::from_boxed(error, Location::caller()),
-            },
+            }
+            .capture_backtrace(),
         }
     }
 }
