@@ -3,7 +3,7 @@
 # =============================================================================
 [package]
 name    = "report-err"
-version = "0.5.0"
+version = "0.6.0"
 
 # Minimum Supported Rust Version (MSRV)
 # 1.81: `core::error::Error` is stable in `core` from 1.81, which the `no_std`

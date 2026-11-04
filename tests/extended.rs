@@ -210,6 +210,24 @@ fn test_section_text_over_the_byte_budget_is_cut() {
     assert!(format!("{error:?}").contains("1 text cut"));
 }
 
+#[test]
+fn test_attachment_heap_bytes_count_against_the_byte_budget() {
+    // PLAN 10.3 (0.6): a buffer's heap bytes count, not only its 24 bytes.
+    let big = vec![0u8; 40 * 1024];
+    let error = err!("x").attach(big.clone()).attach(big);
+    assert_eq!(error.attachments::<Vec<u8>>().count(), 1);
+    assert!(format!("{error:?}").contains("1 attachment"));
+    let error = err!("x")
+        .attach(String::from_utf8(vec![b'a'; 40 * 1024]).unwrap())
+        .attach_display("x".repeat(40 * 1024).into_boxed_str());
+    assert_eq!(error.attachments::<String>().count(), 1);
+    assert_eq!(error.attachments::<Box<str>>().count(), 0);
+    // Small values and other types still fit as before.
+    let error = err!("x").attach(vec![1u8; 16]).attach([0u8; 1024]);
+    assert_eq!(error.attachments::<Vec<u8>>().count(), 1);
+    assert_eq!(error.attachments::<[u8; 1024]>().count(), 1);
+}
+
 // ---------------------------------------------------------------- exit codes and Ok
 
 #[test]

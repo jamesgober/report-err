@@ -319,7 +319,7 @@ fn test_alloc_report_without_a_reporter_is_free() {
 #[test]
 fn test_alloc_group_and_suppress() {
     let (group, count) = allocs(|| Error::group("g", [err!("a"), err!("b")]));
-    // The group's node, its extension block, the children's vector, and the
+    // The group's node, its extras, the children's vector, and the
     // two children.
     assert_eq!(count, 5);
     let (_, count) = allocs(|| group.find::<io::Error>());

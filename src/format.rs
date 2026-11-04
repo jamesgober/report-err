@@ -3,6 +3,7 @@
 //! None of them allocates.
 
 use core::fmt::{self, Debug, Display, Write};
+use core::panic::Location;
 
 use crate::chain::Link;
 use crate::error::Error;
@@ -115,7 +116,8 @@ impl Write for Watch<'_> {
 
 /// Bytes of a formatted link kept for the de-duplication check. A string the
 /// error holds itself (a string context layer, a message root) is compared
-/// in place, whatever its length.
+/// in place, and the last link after a string as it is formatted, whatever
+/// their length.
 const KEEP: usize = 256;
 
 /// The last `KEEP` bytes written to it, and how many were written in all.
@@ -187,6 +189,73 @@ enum Text<'a> {
     None,
     Str(&'a str),
     Buf(usize),
+    /// The last link, compared with the link before it while it was
+    /// formatted and not kept; whether it repeats it.
+    Judged(bool),
+}
+
+/// Where a repeat of the previous link could start in it: at 0, and after
+/// each `": "`. More than this many, and the link is buffered instead.
+const STARTS: usize = 8;
+
+/// Compares a link's text, as it is formatted, with each way it could repeat
+/// `prev` (all of it, or what follows one of its `": "`), and stops the
+/// formatting at the first write that rules every way out. No buffer.
+struct Matcher<'p> {
+    prev: &'p [u8],
+    starts: [usize; STARTS],
+    /// Bit `i` set while `starts[i]` still matches.
+    alive: u8,
+    written: usize,
+}
+
+impl<'p> Matcher<'p> {
+    fn new(prev: &'p str) -> Option<Matcher<'p>> {
+        let mut matcher = Matcher {
+            prev: prev.as_bytes(),
+            starts: [0; STARTS],
+            alive: 1,
+            written: 0,
+        };
+        // A byte scan: `str::match_indices` sets up a general searcher, which
+        // costs more than the scan for these short texts.
+        let mut n = 0;
+        for (at, pair) in matcher.prev.windows(2).enumerate() {
+            if pair == b": " {
+                n += 1;
+                let slot = matcher.starts.get_mut(n)?;
+                *slot = at + 2;
+                matcher.alive |= 1 << n;
+            }
+        }
+        Some(matcher)
+    }
+
+    /// Whether what was written is exactly one of the ways.
+    fn matched(&self) -> bool {
+        self.starts
+            .iter()
+            .enumerate()
+            .any(|(i, start)| self.alive & (1 << i) != 0 && start + self.written == self.prev.len())
+    }
+}
+
+impl Write for Matcher<'_> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let s = s.as_bytes();
+        for (i, start) in self.starts.iter().enumerate() {
+            let at = start + self.written;
+            if self.alive & (1 << i) != 0 && self.prev.get(at..at + s.len()) != Some(s) {
+                self.alive &= !(1 << i);
+            }
+        }
+        self.written += s.len();
+        if self.alive == 0 {
+            // Not a repeat whatever comes next: stop the formatting.
+            return Err(fmt::Error);
+        }
+        Ok(())
+    }
 }
 
 /// Two buffers, made only when a link has to be formatted, and used in turn
@@ -209,10 +278,35 @@ impl Buffers {
     }
 
     /// The text of `link`, formatted into the buffer `prev` does not use when
-    /// the error does not hold it as a string.
-    fn capture<'a>(&mut self, link: &Link<'a>, prev: Text<'_>) -> Result<Text<'a>, fmt::Error> {
+    /// the error does not hold it as a string. The last link (`last`) is
+    /// only compared, since no link after it needs its text: with nothing
+    /// before it not at all, after a string without a buffer.
+    fn capture<'a>(
+        &mut self,
+        link: &Link<'a>,
+        prev: Text<'_>,
+        last: bool,
+    ) -> Result<Text<'a>, fmt::Error> {
         if let Some(text) = link.text {
             return Ok(Text::Str(text));
+        }
+        if last {
+            match prev {
+                Text::None => return Ok(Text::Judged(false)),
+                Text::Str(prev) => {
+                    if let Some(mut matcher) = Matcher::new(prev) {
+                        let text = ErrorText(link.error);
+                        let shown = Shown::new(&text, self.guard);
+                        return match write!(matcher, "{shown}") {
+                            Ok(()) => Ok(Text::Judged(matcher.matched())),
+                            // Stopped by the matcher: not a repeat.
+                            Err(_) if matcher.alive == 0 => Ok(Text::Judged(false)),
+                            Err(e) => Err(e),
+                        };
+                    }
+                }
+                Text::Buf(_) | Text::Judged(_) => {}
+            }
         }
         let slot = usize::from(matches!(prev, Text::Buf(0)));
         let Some(entry) = self.tails.get_mut(slot) else {
@@ -233,6 +327,7 @@ impl Buffers {
                 Some(text) => text,
                 None => return false,
             },
+            Text::Judged(repeats) => return repeats,
             Text::None => return false,
         };
         match prev {
@@ -248,7 +343,7 @@ impl Buffers {
                         || (prev.byte_from_end(cur.len()) == Some(b' ')
                             && prev.byte_from_end(cur.len() + 1) == Some(b':')))
             }),
-            Text::None => false,
+            Text::None | Text::Judged(_) => false,
         }
     }
 
@@ -261,7 +356,9 @@ impl Buffers {
                 Some(text) => out.write_str(text),
                 None => write!(out, "{}", Shown::new(&ErrorText(link.error), self.guard)),
             },
-            Text::None => write!(out, "{}", Shown::new(&ErrorText(link.error), self.guard)),
+            Text::None | Text::Judged(_) => {
+                write!(out, "{}", Shown::new(&ErrorText(link.error), self.guard))
+            }
         }
     }
 }
@@ -283,7 +380,7 @@ pub(crate) fn write_chain(error: &Error, f: &mut dyn Write, mode: Mode) -> fmt::
     let mut first = true;
     let mut chain = error.chain();
     while let Some(link) = chain.next_link() {
-        let cur = buffers.capture(&link, prev)?;
+        let cur = buffers.capture(&link, prev, chain.at_end())?;
         if !first && buffers.repeats(prev, cur) {
             prev = cur;
             continue;
@@ -344,28 +441,42 @@ pub(crate) fn report(error: &Error, out: &mut dyn Write, mode: Mode) -> fmt::Res
     // link after the outermost one).
     let mut skip = Skips([0; 64]);
     let mut printed = 0usize;
+    let mut buffers = Buffers::new(mode);
+    let mut prev = Text::None;
+    let mut links = 0usize;
     {
-        let mut buffers = Buffers::new(mode);
-        let mut prev = Text::None;
         let mut chain = error.chain();
-        let mut n = 0usize;
         while let Some(link) = chain.next_link() {
-            let cur = buffers.capture(&link, prev)?;
-            if n > 0 {
+            let cur = buffers.capture(&link, prev, chain.at_end())?;
+            if links > 0 {
                 if buffers.repeats(prev, cur) {
-                    skip.set(n - 1);
+                    skip.set(links - 1);
                 } else {
                     printed += 1;
                 }
             }
             prev = cur;
-            n += 1;
+            links += 1;
         }
     }
+    // The innermost link's text is still in its buffer (usually the root,
+    // the one link the error does not hold as a string), so it is written
+    // from there, not formatted a second time.
+    let kept = match prev {
+        Text::Buf(slot) => buffers.tail(slot).and_then(Tail::whole),
+        _ => None,
+    };
+    let last = links.saturating_sub(1);
+    let show = |index: usize, link: &Link<'_>, out: &mut dyn Write, indent: &'static str| match kept
+        .filter(|_| index == last)
+    {
+        Some(text) => message(out, mode, indent, &text),
+        None => message(out, mode, indent, &LinkText(link)),
+    };
 
     let mut chain = error.chain();
     if let Some(outer) = chain.next_link() {
-        message(out, mode, "    ", &LinkText(&outer))?;
+        show(0, &outer, out, "    ")?;
     }
     if printed > 0 {
         out.write_str("\n\nCaused by:")?;
@@ -383,7 +494,7 @@ pub(crate) fn report(error: &Error, out: &mut dyn Write, mode: Mode) -> fmt::Res
                 number: (printed > 1).then_some(number),
                 started: false,
             };
-            message(&mut indented, mode, "", &LinkText(&link))?;
+            show(n, &link, &mut indented, "")?;
             number += 1;
         }
     } else {
@@ -413,17 +524,23 @@ pub(crate) fn report(error: &Error, out: &mut dyn Write, mode: Mode) -> fmt::Res
         }
     }
 
-    out.write_str("\n\n")?;
-    if let Some(line) = error.code_line() {
-        writeln!(out, "Code: {line}")?;
+    match error.code_line() {
+        Some(line) => write!(out, "\n\nCode: {line}\nLocation: ")?,
+        None => out.write_str("\n\nLocation: ")?,
     }
-    write!(out, "Location: {}", error.location())?;
+    write_location(out, error.location())?;
 
     let origin = error.location();
     if error.trail().any(|step| step.location != origin) {
         out.write_str("\nTrace:")?;
         for (n, step) in error.trail().enumerate() {
-            write!(out, "\n{n: >5}: {}  ", step.location)?;
+            let mut head = Short::new();
+            head.push(b"\n");
+            head.number(n, 5);
+            head.push(b": ");
+            out.write_str(head.text())?;
+            write_location(out, step.location)?;
+            out.write_str("  ")?;
             match (step.kind, step.context) {
                 (StepKind::Origin, _) => out.write_str("(origin)")?,
                 (StepKind::Context, Some(layer)) => {
@@ -466,6 +583,69 @@ pub(crate) fn report(error: &Error, out: &mut dyn Write, mode: Mode) -> fmt::Res
         write!(out, "\n\nBacktrace:\n{backtrace}")?;
     }
     Ok(())
+}
+
+/// `file:line:column`, as `Location`'s own `Display` writes it, in two
+/// writes and with the numbers made by hand: the report prints one per
+/// trace step, and the formatter's integer path was most of the report's
+/// time (D-052).
+fn write_location(out: &mut dyn Write, at: &Location<'_>) -> fmt::Result {
+    out.write_str(at.file())?;
+    let mut tail = Short::new();
+    tail.push(b":");
+    tail.number(at.line() as usize, 0);
+    tail.push(b":");
+    tail.number(at.column() as usize, 0);
+    out.write_str(tail.text())
+}
+
+/// A few ASCII bytes built on the stack and written at once.
+struct Short {
+    buf: [u8; 64],
+    len: usize,
+}
+
+impl Short {
+    fn new() -> Short {
+        Short {
+            buf: [0; 64],
+            len: 0,
+        }
+    }
+
+    /// Appends ASCII `bytes`; what does not fit is dropped.
+    fn push(&mut self, bytes: &[u8]) {
+        let end = (self.len + bytes.len()).min(self.buf.len());
+        let src = bytes.get(..end - self.len).unwrap_or(&[]);
+        if let Some(dst) = self.buf.get_mut(self.len..end) {
+            dst.copy_from_slice(src);
+        }
+        self.len = end;
+    }
+
+    /// Appends `n` in decimal, right-aligned in `width` columns (at most 20).
+    fn number(&mut self, mut n: usize, width: usize) {
+        let mut digits = [b' '; 20];
+        let mut start = digits.len();
+        loop {
+            start -= 1;
+            if let Some(slot) = digits.get_mut(start) {
+                // `n % 10` is below 10, so this is an ASCII digit.
+                *slot = b'0' + (n % 10) as u8;
+            }
+            n /= 10;
+            if n == 0 || start == 0 {
+                break;
+            }
+        }
+        let start = start.min(digits.len().saturating_sub(width));
+        self.push(digits.get(start..).unwrap_or(&[]));
+    }
+
+    fn text(&self) -> &str {
+        // Only ASCII is pushed, so this never fails.
+        core::str::from_utf8(self.buf.get(..self.len).unwrap_or(&[])).unwrap_or("")
+    }
 }
 
 /// Which form [`Error::render`] writes.
@@ -871,6 +1051,7 @@ impl Write for Indented<'_> {
 
 #[cfg(test)]
 mod tests {
+    use alloc::boxed::Box;
     use alloc::format;
     use alloc::string::String;
 
@@ -927,6 +1108,30 @@ mod tests {
         assert_eq!(format!("{error:#}"), "disk full: disk");
         let error = Error::msg("full").context("disk full");
         assert_eq!(format!("{error:#}"), "disk full: full");
+    }
+
+    #[test]
+    fn test_format_dedup_last_link_compared_as_formatted() {
+        // After a string layer, the root is compared without a buffer: all of
+        // the layer, or what follows any of its `": "`.
+        let io = "No such file or directory (os error 2)";
+        let error = Error::new(Io).context(format!("a: b: {io}"));
+        assert_eq!(format!("{error:#}"), format!("a: b: {io}"));
+        let error = Error::new(Io).context(io);
+        assert_eq!(format!("{error:#}"), io);
+        // A layer that matches the root's start only, or that the root
+        // outruns, is not a repeat.
+        let error = Error::new(Io).context("No such file");
+        assert_eq!(format!("{error:#}"), format!("No such file: {io}"));
+        let error = Error::new(Io).context(format!("x: {io} (again)"));
+        assert_eq!(format!("{error:#}"), format!("x: {io} (again): {io}"));
+        // More `": "` than the matcher tracks: the buffer decides instead.
+        let many = format!("{}{io}", "k: ".repeat(STARTS + 2));
+        let error = Error::new(Io).context(many.clone());
+        assert_eq!(format!("{error:#}"), many);
+        // The report skips the same causes.
+        let error = Error::new(Io).context(format!("a: {io}"));
+        assert!(!format!("{error:?}").contains("Caused by"));
     }
 
     /// The report up to and including its `Location:` line.
@@ -1051,17 +1256,25 @@ Location: {}",
         // Strings the error holds are compared in place at any length.
         let error = Error::msg(long.clone()).context(long.clone());
         assert_eq!(format!("{error:#}"), long);
-        // A formatted link longer than the buffer cannot be compared, so it is
-        // written out in full.
+        // The last link is compared as it is formatted, at any length.
         #[derive(Debug)]
-        struct Long(String);
+        struct Long(String, Option<Box<Long>>);
         impl Display for Long {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 f.write_str(&self.0)
             }
         }
-        impl core::error::Error for Long {}
-        let error = Error::new(Long(long.clone())).context(long.clone());
+        impl core::error::Error for Long {
+            fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+                self.1.as_deref().map(|l| l as _)
+            }
+        }
+        let error = Error::new(Long(long.clone(), None)).context(long.clone());
+        assert_eq!(format!("{error:#}"), long);
+        // A formatted link followed by another is buffered; one longer than
+        // the buffer cannot be compared, so the next is written out in full.
+        let inner = Long(long.clone(), None);
+        let error = Error::new(Long(long.clone(), Some(Box::new(inner))));
         assert_eq!(format!("{error:#}"), format!("{long}: {long}"));
     }
 

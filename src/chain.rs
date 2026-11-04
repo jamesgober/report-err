@@ -83,6 +83,11 @@ impl<'a> Chain<'a> {
 }
 
 impl<'a> Chain<'a> {
+    /// Whether no link is left (the walk from the front only).
+    pub(crate) fn at_end(&self) -> bool {
+        self.frames == 0 && self.next.is_none()
+    }
+
     /// The next link, with its text when the error holds it as a string.
     pub(crate) fn next_link(&mut self) -> Option<Link<'a>> {
         if self.back > 0 && self.remaining() <= self.back {

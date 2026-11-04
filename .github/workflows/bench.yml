@@ -38,6 +38,22 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: benches
+      - name: Environment
+        shell: bash
+        run: |
+          {
+            echo "### ${{ matrix.platform }}: environment"
+            echo '```'
+            rustc -vV
+            if command -v lscpu > /dev/null; then
+              lscpu | grep -E 'Model name|^CPU\(s\)|Architecture'
+            else
+              powershell -NoProfile -Command "(Get-CimInstance Win32_Processor).Name; 'Logical CPUs: ' + (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors"
+            fi
+            uname -sr
+            echo '```'
+          } | tee env.md
+          cat env.md >> "$GITHUB_STEP_SUMMARY"
       - name: Run
         shell: bash
         run: |
@@ -57,6 +73,7 @@ jobs:
         with:
           name: bench-${{ matrix.platform }}
           path: |
+            env.md
             ratios.md
             measured.json
             benches/target/criterion/**/new/*.json

@@ -32,8 +32,8 @@ pub struct Limits {
     pub max_tree: u32,
     /// Nesting of children and suppressed errors (1 to 64).
     pub max_depth: u32,
-    /// Text and value bytes one error's extension block holds (1,024 to
-    /// 16,777,216). Text is cut at a character boundary; values are refused.
+    /// Text and value bytes one error's extras hold (1,024 to 16,777,216).
+    /// Text is cut at a character boundary; values are refused.
     pub max_bytes: u32,
     /// Links walked in one chain (8 to 4,096); also stops a `source()` that
     /// never ends.

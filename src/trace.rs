@@ -39,7 +39,7 @@ impl Error {
     /// an `Error` is expected) cannot record where it happened: Rust calls the
     /// identity conversion, which cannot be tracked. `.trace()` records that
     /// line. The first 4 and the latest 11 points are kept, with a count of
-    /// those dropped between. One store, plus the extension block the first
+    /// those dropped between. One store, plus the extras block the first
     /// time.
     ///
     /// ```

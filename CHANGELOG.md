@@ -13,6 +13,37 @@
 
 ---
 
+## [0.6.0] - 2026-11-04
+
+Optimisation. Measured against anyhow, eyre, error-stack, and
+`Box<dyn Error>` on Linux x86_64, Windows x86_64, and Linux aarch64;
+`docs/PERFORMANCE.md` has every number.
+
+### Changed
+
+- The extras (attachments, sections, trace points, the backtrace, children,
+  suppressed errors, fields) are a block of their own, pointed to from the
+  header, which grows from 80 to 88 bytes on 64-bit. An error with only
+  context layers now allocates 184 bytes for layers two and up instead of
+  656, which makes dropping one with three layers about 40% faster.
+- The report (`{:?}`) and the one-line chain (`{:#}`) check the last link
+  for a repeat as it is formatted, with no buffer and at any length, and
+  write locations and trace numbers without the formatter's integer path.
+  A last link longer than 256 bytes that repeats the layer before it is now
+  skipped like a short one.
+- An attachment that is a `String`, `Vec<u8>`, `Box<str>`, or `Box<[u8]>`
+  counts its heap bytes against `max_bytes`, not only its own size.
+
+### Performance
+
+- Benchmarks B1 to B18 (PLAN 11.1) in `benches/`, run in CI on three
+  platforms by the `Benchmarks` workflow, with a ratio table and a gate that
+  fails a ratio more than 5% worse than `benches/baseline.json`.
+- One-allocation formatted messages (RD-14) measured and not adopted: the
+  gain fell short of the 20% required on every platform.
+
+---
+
 ## [0.5.0] - 2026-11-03
 
 Feature complete. Requires define-err 0.5.
@@ -230,7 +261,8 @@ The scaffold and the plan. No functional code yet.
   cases, open decisions, and the decision log D-001 to D-008),
   `dev/DIRECTIVES.md`, and `dev/ROADMAP.md`.
 
-[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/jamesgober/report-err/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/jamesgober/report-err/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/jamesgober/report-err/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jamesgober/report-err/compare/v0.2.0...v0.3.0
