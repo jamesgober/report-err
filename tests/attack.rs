@@ -5,6 +5,7 @@
 //! `ExitReport` in `exit.rs`, T9 in `oom.rs`, T13 and T14 in `report.rs`,
 //! T15 in `limits.rs`, and T8 is Miri, AddressSanitizer, and the fuzz
 //! targets.
+#![cfg(feature = "std")]
 
 use std::error::Error as StdError;
 use std::fmt::{self, Write};
