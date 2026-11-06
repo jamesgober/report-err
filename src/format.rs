@@ -116,8 +116,7 @@ impl Write for Watch<'_> {
 
 /// Bytes of a formatted link kept for the de-duplication check. A string the
 /// error holds itself (a string context layer, a message root) is compared
-/// in place, and the last link after a string as it is formatted, whatever
-/// their length.
+/// in place, whatever its length.
 const KEEP: usize = 256;
 
 /// The last `KEEP` bytes written to it, and how many were written in all.
@@ -189,73 +188,9 @@ enum Text<'a> {
     None,
     Str(&'a str),
     Buf(usize),
-    /// The last link, compared with the link before it while it was
-    /// formatted and not kept; whether it repeats it.
-    Judged(bool),
-}
-
-/// Where a repeat of the previous link could start in it: at 0, and after
-/// each `": "`. More than this many, and the link is buffered instead.
-const STARTS: usize = 8;
-
-/// Compares a link's text, as it is formatted, with each way it could repeat
-/// `prev` (all of it, or what follows one of its `": "`), and stops the
-/// formatting at the first write that rules every way out. No buffer.
-struct Matcher<'p> {
-    prev: &'p [u8],
-    starts: [usize; STARTS],
-    /// Bit `i` set while `starts[i]` still matches.
-    alive: u8,
-    written: usize,
-}
-
-impl<'p> Matcher<'p> {
-    fn new(prev: &'p str) -> Option<Matcher<'p>> {
-        let mut matcher = Matcher {
-            prev: prev.as_bytes(),
-            starts: [0; STARTS],
-            alive: 1,
-            written: 0,
-        };
-        // A byte scan: `str::match_indices` sets up a general searcher, which
-        // costs more than the scan for these short texts.
-        let mut n = 0;
-        for (at, pair) in matcher.prev.windows(2).enumerate() {
-            if pair == b": " {
-                n += 1;
-                let slot = matcher.starts.get_mut(n)?;
-                *slot = at + 2;
-                matcher.alive |= 1 << n;
-            }
-        }
-        Some(matcher)
-    }
-
-    /// Whether what was written is exactly one of the ways.
-    fn matched(&self) -> bool {
-        self.starts
-            .iter()
-            .enumerate()
-            .any(|(i, start)| self.alive & (1 << i) != 0 && start + self.written == self.prev.len())
-    }
-}
-
-impl Write for Matcher<'_> {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        let s = s.as_bytes();
-        for (i, start) in self.starts.iter().enumerate() {
-            let at = start + self.written;
-            if self.alive & (1 << i) != 0 && self.prev.get(at..at + s.len()) != Some(s) {
-                self.alive &= !(1 << i);
-            }
-        }
-        self.written += s.len();
-        if self.alive == 0 {
-            // Not a repeat whatever comes next: stop the formatting.
-            return Err(fmt::Error);
-        }
-        Ok(())
-    }
+    /// The only link: nothing to compare it with, so it is not formatted
+    /// until it is written.
+    Alone,
 }
 
 /// Two buffers, made only when a link has to be formatted, and used in turn
@@ -278,9 +213,9 @@ impl Buffers {
     }
 
     /// The text of `link`, formatted into the buffer `prev` does not use when
-    /// the error does not hold it as a string. The last link (`last`) is
-    /// only compared, since no link after it needs its text: with nothing
-    /// before it not at all, after a string without a buffer.
+    /// the error does not hold it as a string. A link that is both the first
+    /// and the last (`last`, with no `prev`) is not formatted here: nothing
+    /// compares with it.
     fn capture<'a>(
         &mut self,
         link: &Link<'a>,
@@ -290,23 +225,8 @@ impl Buffers {
         if let Some(text) = link.text {
             return Ok(Text::Str(text));
         }
-        if last {
-            match prev {
-                Text::None => return Ok(Text::Judged(false)),
-                Text::Str(prev) => {
-                    if let Some(mut matcher) = Matcher::new(prev) {
-                        let text = ErrorText(link.error);
-                        let shown = Shown::new(&text, self.guard);
-                        return match write!(matcher, "{shown}") {
-                            Ok(()) => Ok(Text::Judged(matcher.matched())),
-                            // Stopped by the matcher: not a repeat.
-                            Err(_) if matcher.alive == 0 => Ok(Text::Judged(false)),
-                            Err(e) => Err(e),
-                        };
-                    }
-                }
-                Text::Buf(_) | Text::Judged(_) => {}
-            }
+        if last && matches!(prev, Text::None) {
+            return Ok(Text::Alone);
         }
         let slot = usize::from(matches!(prev, Text::Buf(0)));
         let Some(entry) = self.tails.get_mut(slot) else {
@@ -327,8 +247,7 @@ impl Buffers {
                 Some(text) => text,
                 None => return false,
             },
-            Text::Judged(repeats) => return repeats,
-            Text::None => return false,
+            Text::None | Text::Alone => return false,
         };
         match prev {
             Text::Str(prev) => {
@@ -343,7 +262,7 @@ impl Buffers {
                         || (prev.byte_from_end(cur.len()) == Some(b' ')
                             && prev.byte_from_end(cur.len() + 1) == Some(b':')))
             }),
-            Text::None | Text::Judged(_) => false,
+            Text::None | Text::Alone => false,
         }
     }
 
@@ -356,7 +275,7 @@ impl Buffers {
                 Some(text) => out.write_str(text),
                 None => write!(out, "{}", Shown::new(&ErrorText(link.error), self.guard)),
             },
-            Text::None | Text::Judged(_) => {
+            Text::None | Text::Alone => {
                 write!(out, "{}", Shown::new(&ErrorText(link.error), self.guard))
             }
         }
@@ -1111,9 +1030,9 @@ mod tests {
     }
 
     #[test]
-    fn test_format_dedup_last_link_compared_as_formatted() {
-        // After a string layer, the root is compared without a buffer: all of
-        // the layer, or what follows any of its `": "`.
+    fn test_format_dedup_formatted_root_after_a_string_layer() {
+        // The root is formatted into a buffer and compared with the layer:
+        // all of it, or what follows any of its `": "`.
         let io = "No such file or directory (os error 2)";
         let error = Error::new(Io).context(format!("a: b: {io}"));
         assert_eq!(format!("{error:#}"), format!("a: b: {io}"));
@@ -1125,10 +1044,8 @@ mod tests {
         assert_eq!(format!("{error:#}"), format!("No such file: {io}"));
         let error = Error::new(Io).context(format!("x: {io} (again)"));
         assert_eq!(format!("{error:#}"), format!("x: {io} (again): {io}"));
-        // More `": "` than the matcher tracks: the buffer decides instead.
-        let many = format!("{}{io}", "k: ".repeat(STARTS + 2));
-        let error = Error::new(Io).context(many.clone());
-        assert_eq!(format!("{error:#}"), many);
+        // A root alone is written as it is.
+        assert_eq!(format!("{:#}", Error::new(Io)), io);
         // The report skips the same causes.
         let error = Error::new(Io).context(format!("a: {io}"));
         assert!(!format!("{error:?}").contains("Caused by"));
@@ -1256,7 +1173,8 @@ Location: {}",
         // Strings the error holds are compared in place at any length.
         let error = Error::msg(long.clone()).context(long.clone());
         assert_eq!(format!("{error:#}"), long);
-        // The last link is compared as it is formatted, at any length.
+        // A formatted link longer than the buffer cannot be compared, so it is
+        // written out in full, whether it is the last link or not.
         #[derive(Debug)]
         struct Long(String, Option<Box<Long>>);
         impl Display for Long {
@@ -1270,9 +1188,7 @@ Location: {}",
             }
         }
         let error = Error::new(Long(long.clone(), None)).context(long.clone());
-        assert_eq!(format!("{error:#}"), long);
-        // A formatted link followed by another is buffered; one longer than
-        // the buffer cannot be compared, so the next is written out in full.
+        assert_eq!(format!("{error:#}"), format!("{long}: {long}"));
         let inner = Long(long.clone(), None);
         let error = Error::new(Long(long.clone(), Some(Box::new(inner))));
         assert_eq!(format!("{error:#}"), format!("{long}: {long}"));

@@ -22,15 +22,15 @@ Optimisation. Measured against anyhow, eyre, error-stack, and
 ### Changed
 
 - The extras (attachments, sections, trace points, the backtrace, children,
-  suppressed errors, fields) are a block of their own, pointed to from the
-  header, which grows from 80 to 88 bytes on 64-bit. An error with only
-  context layers now allocates 184 bytes for layers two and up instead of
-  656, which makes dropping one with three layers about 40% faster.
-- The report (`{:?}`) and the one-line chain (`{:#}`) check the last link
-  for a repeat as it is formatted, with no buffer and at any length, and
-  write locations and trace numbers without the formatter's integer path.
-  A last link longer than 256 bytes that repeats the layer before it is now
-  skipped like a short one.
+  suppressed errors, fields) are a block of their own, made on first use.
+  An error with only context layers now allocates 192 bytes for layers two
+  and up instead of 656, so dropping one with three layers takes 0.58 to
+  0.77 of anyhow's time (it was 1.00 to 1.30). An error with extras and
+  fewer than two layers makes two blocks instead of one.
+- The report (`{:?}`) writes the root's text from the buffer the repeat
+  check filled instead of formatting it again, and writes locations and
+  trace numbers without the formatter's integer path; a chain of one link
+  is not buffered at all.
 - An attachment that is a `String`, `Vec<u8>`, `Box<str>`, or `Box<[u8]>`
   counts its heap bytes against `max_bytes`, not only its own size.
 

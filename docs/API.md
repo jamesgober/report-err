@@ -198,7 +198,7 @@ One type for any error. Since `0.3` (ERR-01).
 | Property | Value |
 |---|---|
 | Size | one machine word: `size_of::<Error>()`, `size_of::<Result<(), Error>>()`, and `size_of::<Option<Error>>()` all equal `size_of::<usize>()` (asserted at compile time) |
-| Heap | one allocation holding an 88-byte header (on 64-bit targets) and the root error inline; a second block (184 bytes) only when a second context layer is added, and another only when an attachment, a section, a child, a trace point, or a backtrace is |
+| Heap | one allocation holding an 80-byte header (on 64-bit targets) and the root error inline; a second block (192 bytes) only when a second context layer is added, and the extras (472 bytes) with it only when an attachment, a section, a child, a trace point, or a backtrace is |
 | Traits | `Debug`, `Display`, `Deref<Target = dyn Error + Send + Sync + 'static>`, `DerefMut`, `AsRef<dyn Error + Send + Sync + 'static>`, `AsRef<dyn Error + 'static>`, `From<E>` for every `E: core::error::Error + Send + Sync + 'static`, `Send`, `Sync`, `Unpin`, `UnwindSafe`, `RefUnwindSafe` |
 | Not | `Clone` (an error is owned by one call path); `core::error::Error` itself (it could not and still convert from every error through `?`: [`Deref`](#deref-to-dyn-error-the-source-chain) gives the `&dyn Error`) |
 | `#[must_use]` | `Error` and every method that returns an `Error` or a `Result` |
@@ -375,7 +375,7 @@ impl Error {
 
 Context layers never carry a code; children are not consulted (a group has its own code or none). `Display` of an error is a private message for logs; `public_message` and the category are the only parts meant for a client.
 
-Cost: `code` set by hand under 1 ns; `code` found under three contexts 44 to 80 ns [measured on a loaded machine, 0.4.0]; `coded`, `with_severity`, and `with_exit_code` one store; the first `with_kind` allocates the extras block if there is none.
+Cost: `code` set by hand under 1 ns; `code` found under three contexts 44 to 80 ns [measured on a loaded machine, 0.4.0]; `coded`, `with_severity`, and `with_exit_code` one store; the first `with_kind` allocates the extras (and the extension block) if there are none.
 
 ```rust
 use report_err::{bail, Context, Result};
@@ -652,7 +652,7 @@ impl Error {
 | ATT-03 | `attachments` | 3 | 0.4 |
 | ATT-04 | `attach_display` | 2 | 0.4 |
 
-Any value, read back by type on stable Rust. Attachments are **opaque**: never printed, never reported as text, unless added with `attach_display`, which also prints them under `Attachments:`. Bounded by `max_attachments` (32) and `max_bytes`, which counts the value's own size and, for a `String`, `Vec<u8>`, `Box<str>`, or `Box<[u8]>`, its heap bytes too; past either, the new value is dropped and counted. Cost [est.]: one allocation for the value, plus the extras block if it does not exist yet.
+Any value, read back by type on stable Rust. Attachments are **opaque**: never printed, never reported as text, unless added with `attach_display`, which also prints them under `Attachments:`. Bounded by `max_attachments` (32) and `max_bytes`, which counts the value's own size and, for a `String`, `Vec<u8>`, `Box<str>`, or `Box<[u8]>`, its heap bytes too; past either, the new value is dropped and counted. Cost [est.]: one allocation for the value, plus the extras (and the extension block) if they do not exist yet.
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -902,7 +902,7 @@ pub enum StepKind { Origin, Context, Trace }
 | TRC-04 | `backtrace` | 2 | 0.4 |
 | TRC-05 | `with_backtrace` | 2 | 0.4 |
 
-The **trail** answers "which way did this error travel": the origin, every context layer's location, and every `.trace()` point, in the order they happened. It is cheaper than a backtrace and present in release builds. A `?` that does not change the error type cannot be recorded (Rust calls the identity `From`, which cannot be tracked), so `.trace()` exists to record that line: one store, plus the extras block the first time. Trace points keep the first 4 and the latest 11, with a count of those dropped between (`omitted`).
+The **trail** answers "which way did this error travel": the origin, every context layer's location, and every `.trace()` point, in the order they happened. It is cheaper than a backtrace and present in release builds. A `?` that does not change the error type cannot be recorded (Rust calls the identity `From`, which cannot be tracked), so `.trace()` exists to record that line: one store, plus the extras (and the extension block) the first time. Trace points keep the first 4 and the latest 11, with a count of those dropped between (`omitted`).
 
 **Backtraces** are captured only when the root error is created, only when `RUST_LIB_BACKTRACE` or `RUST_BACKTRACE` enables them (std's rules; `RUST_LIB_BACKTRACE=0` turns them off for errors only), or when `with_backtrace` forces one; symbols are resolved only when printed. Context never captures one. Cost [measured on the design machine]: 1.8 ns for the disabled check, about 0.8 us to capture, about 357 us to resolve and print.
 

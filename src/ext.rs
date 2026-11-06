@@ -1,7 +1,8 @@
 //! What an error carries besides its context layers: attachments, sections,
 //! trace points, an explicit exit code, the backtrace, and the counters of
 //! what a budget dropped. Kept in a block of their own (the extras), which
-//! an error allocates the first time it needs any of it (PLAN 7.2, D-052).
+//! the extension block points to and an error allocates the first time it
+//! needs any of it (PLAN 7.2, D-052).
 
 use alloc::borrow::Cow;
 use alloc::boxed::Box;

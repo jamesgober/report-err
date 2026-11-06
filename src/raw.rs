@@ -72,10 +72,6 @@ pub(crate) struct Header {
     code: Option<Code>,
     /// The extension block, made with `Box::leak` and freed in `Drop`.
     ext: Option<NonNull<Ext>>,
-    /// Attachments, sections, trace points, and the rest: safe data, made on
-    /// first use. Apart from the context layers' block, so an error with only
-    /// layers allocates 184 bytes for them, not 656 (D-052).
-    extras: Option<Box<Extras>>,
     /// Context layers stored: `first`, then `Ext::inline`, then `Ext::spill`.
     /// At most `max_frames`, which is below 65,536.
     frames: u16,
@@ -105,6 +101,11 @@ struct Ext {
     inline: [MaybeUninit<Frame>; INLINE],
     /// Layers 6 and up, innermost first.
     spill: Vec<Frame>,
+    /// Attachments, sections, trace points, and the rest (safe data; reached
+    /// by projection to this field only, I-13). Boxed apart and made on first
+    /// use, so an error with only context layers allocates 192 bytes here,
+    /// not 656, and the header stays 80 bytes (D-052).
+    extras: Option<Box<Extras>>,
 }
 
 /// One context layer.
@@ -310,7 +311,6 @@ impl RawError {
             origin,
             code: None,
             ext: None,
-            extras: None,
             frames: 0,
             values: 0,
             severity: None,
@@ -437,12 +437,23 @@ impl RawError {
 
     /// The extras, if any were added.
     pub(crate) fn extras(&self) -> Option<&Extras> {
-        self.header().extras.as_deref()
+        let ext = self.header().ext?;
+        // SAFETY: I-3, I-13: a projection to the `extras` field of a live block.
+        let field = unsafe { addr_of!((*ext.as_ptr()).extras) };
+        // SAFETY: the field is initialised; the reference covers it only and
+        // lives as long as `&self`.
+        unsafe { &*field }.as_deref()
     }
 
-    /// The extras, allocated on first use.
+    /// The extras, allocating the extension block and the extras on first
+    /// use.
     pub(crate) fn extras_mut(&mut self) -> &mut Extras {
-        self.header_mut().extras.get_or_insert_with(Box::default)
+        let ext = self.ext_or_alloc();
+        // SAFETY: I-3, I-13: a projection to the `extras` field of a live block.
+        let field = unsafe { addr_of_mut!((*ext.as_ptr()).extras) };
+        // SAFETY: I-8: unique access through `&mut self`; the reference covers
+        // the field only.
+        unsafe { &mut *field }.get_or_insert_with(Box::default)
     }
 
     /// Whether any layer holds a value other than a string.
@@ -633,6 +644,7 @@ impl RawError {
                 MaybeUninit::uninit(),
             ],
             spill: Vec::new(),
+            extras: None,
         };
         let ext = NonNull::from(Box::leak(Box::new(block)));
         self.header_mut().ext = Some(ext);
@@ -837,9 +849,8 @@ impl<T: Send + Sync + 'static> WriteOnce<T> {
 // The layout the design depends on (PLAN 7.2, 7.6.1).
 const _: () = assert!(core::mem::size_of::<Frame>() == 5 * core::mem::size_of::<usize>());
 const _: () = assert!(core::mem::align_of::<Header>() >= 2);
-// 88 since 0.6: the extras pointer joined the header (D-052).
 #[cfg(target_pointer_width = "64")]
-const _: () = assert!(core::mem::size_of::<Header>() == 88);
+const _: () = assert!(core::mem::size_of::<Header>() == 80);
 
 #[cfg(test)]
 mod tests {

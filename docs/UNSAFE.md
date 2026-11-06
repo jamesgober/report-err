@@ -34,13 +34,12 @@ One heap allocation per error, made with `Box::new(Node<P>)` and kept as a point
 
 ```text
  Error (8 bytes) ──▶ Node<P>, #[repr(C)]
-                     ├─ Header (first field; 88 bytes on 64-bit since 0.6)
+                     ├─ Header (first field; 80 bytes on 64-bit since 0.4)
                      │    vtable    &'static VTable          one per payload type P
                      │    origin    &'static Location        where the error was created
                      │    code      Option<Code>             the code set by hand
-                     │    ext       Option<NonNull<Ext>>     made on the second context layer
-                     │    extras    Option<Box<Extras>>      made by the first attachment, section, trace
-                     │                                       point, backtrace, child, or field (safe data)
+                     │    ext       Option<NonNull<Ext>>     made on the second context layer, or by the first
+                     │                                       attachment, section, or trace point
                      │    frames    u16                      context layers stored
                      │    values    u16                      of those, layers holding a non-string value
                      │    severity  Option<Severity>         the override
@@ -50,10 +49,11 @@ One heap allocation per error, made with `Box::new(Node<P>)` and kept as a point
                      └─ payload: P                           the root error, inline
 
  Frame (40 bytes [measured]): location, value (&'static str | String | Box<dyn Display>), link
- Ext (a second allocation, 184 bytes): inline: [MaybeUninit<Frame>; 4], spill: Vec<Frame>
+ Ext (a second allocation, 192 bytes): inline: [MaybeUninit<Frame>; 4], spill: Vec<Frame>,
+     extras: Option<Box<Extras>> (a third allocation, 472 bytes, made on first use)
 ```
 
-The payload `P` is the user's error `E`, or one of three `#[repr(transparent)]` wrappers: `MessageError<M>` (`Error::msg`, `err!`), `DisplayError<M>` (context on `None`), and `BoxedError` (`from_boxed`). The vtable holds, for `P`: `drop` (frees the node as a `Node<P>`), `payload` (a `NonNull<dyn Error + Send + Sync>` to the payload, made by projecting to the field; for a boxed root, to the boxed error), `take` (moves the payload out and frees the rest), `type_id` (the type a caller downcasts to: `M` for a message wrapper, `Box<dyn Error + Send + Sync>` for a boxed root), `info` (for `from_info`, a `NonNull<dyn ErrorInfo>` to the payload, made the same way as `payload`; `None` for every other constructor), and `type_name` (`core::any::type_name` of the type a caller downcasts to, for the creation hook and the record). `Extras` is a safe struct: attachments, sections, trace points, the backtrace, the added kinds, and the budget counters. Since `0.6` it is a `Box` in the header, reached through `header()` and `header_mut()` like the other header fields, never from `deref`, `deref_mut`, or a frame's `source()` (I-13). Flags join the header in `0.5`.
+The payload `P` is the user's error `E`, or one of three `#[repr(transparent)]` wrappers: `MessageError<M>` (`Error::msg`, `err!`), `DisplayError<M>` (context on `None`), and `BoxedError` (`from_boxed`). The vtable holds, for `P`: `drop` (frees the node as a `Node<P>`), `payload` (a `NonNull<dyn Error + Send + Sync>` to the payload, made by projecting to the field; for a boxed root, to the boxed error), `take` (moves the payload out and frees the rest), `type_id` (the type a caller downcasts to: `M` for a message wrapper, `Box<dyn Error + Send + Sync>` for a boxed root), `info` (for `from_info`, a `NonNull<dyn ErrorInfo>` to the payload, made the same way as `payload`; `None` for every other constructor), and `type_name` (`core::any::type_name` of the type a caller downcasts to, for the creation hook and the record). `Extras` is a safe struct: attachments, sections, trace points, the backtrace, the added kinds, and the budget counters. Since `0.6` it is boxed apart, so an error with only context layers does not carry it; `raw` reaches the box by projection to the `Ext::extras` field only (I-13). Flags join the header in `0.5`.
 
 `WriteOnce<T>` is the process-wide slot behind `configure_catalogs` and, from `0.5`, the budgets and the reporter: an `AtomicPtr<T>` holding a box that is never freed (I-14).
 
@@ -107,4 +107,4 @@ CI runs both on every push and pull request (`cargo miri test --lib --tests`), w
 | 0.3.0 | the module written: the node and its vtable, the three payload wrappers, the flat context store with direct links, invariants I-1 to I-13 each with a test; clean under Miri (strict provenance, Stacked Borrows and Tree Borrows) and AddressSanitizer |
 | 0.4.0 | the header holds the code, severity, and exit overrides (72 to 80 bytes; the omitted count moved to `Extras`); the vtable's `info` entry and `from_info`; `Extras` in the extension block; `WriteOnce` and invariant I-14 |
 | 0.5.0 | the header's atomic `flags` (it fits in the padding: still 80 bytes) and the vtable's `type_name`; no new `unsafe` block and no new invariant. `Extras` gains children, suppressed errors, and fields, all safe data |
-| 0.6.0 | `Extras` leaves the extension block for a `Box` of its own, pointed to from the header (80 to 88 bytes), so an error with only context layers allocates a 184-byte block for them instead of 656 bytes; two `unsafe` blocks removed (the projections to `Ext::extras`), none added, no new invariant (D-052) |
+| 0.6.0 | `Ext::extras` becomes `Option<Box<Extras>>`, made on first use, so an error with only context layers allocates a 192-byte block for them instead of 656 bytes; the header stays 80 bytes. No new `unsafe` block and no new invariant (D-052) |
