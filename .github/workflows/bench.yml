@@ -3,8 +3,11 @@ name: Benchmarks
 # The measured comparison of PLAN 11: report-err against anyhow, eyre,
 # error-stack, and Box<dyn Error> on Linux x86_64, Windows x86_64, and Linux
 # aarch64. Ratios come from the same run on the same runner, so the runner's
-# own speed cancels out. The gate fails a ratio more than 5% worse than the
-# stored baseline (benches/baseline.json).
+# own speed cancels out. On a pull request the base branch is measured first
+# on the same runner, and the gate fails when one of report-err's own times
+# is more than 5% slower than the base's at the lower end of criterion's
+# confidence interval (D-056). A ratio that drifts more than 5% from
+# benches/baseline.json is reported as a warning.
 
 on:
   pull_request:
@@ -34,6 +37,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -54,11 +59,27 @@ jobs:
             echo '```'
           } | tee env.md
           cat env.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Run the base branch
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          unset RUST_BACKTRACE RUST_LIB_BACKTRACE
+          git worktree add ../base "origin/${{ github.base_ref }}"
+          if [ -f ../base/benches/Cargo.toml ]; then
+            cd ../base
+            CARGO_TARGET_DIR="$GITHUB_WORKSPACE/benches/target" cargo bench --manifest-path benches/Cargo.toml -- --warm-up-time 1 --measurement-time 3 --noplot --save-baseline base
+          else
+            echo "The base branch has no benchmarks; nothing to compare."
+          fi
       - name: Run
         shell: bash
         run: |
           unset RUST_BACKTRACE RUST_LIB_BACKTRACE
-          cargo bench --manifest-path benches/Cargo.toml -- --warm-up-time 1 --measurement-time 3 --noplot
+          if [ -d benches/target/criterion ]; then
+            cargo bench --manifest-path benches/Cargo.toml -- --warm-up-time 1 --measurement-time 3 --noplot --baseline-lenient base
+          else
+            cargo bench --manifest-path benches/Cargo.toml -- --warm-up-time 1 --measurement-time 3 --noplot
+          fi
       - name: Run B18 with mimalloc
         if: matrix.platform != 'windows-x86_64'
         shell: bash
