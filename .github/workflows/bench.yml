@@ -64,20 +64,25 @@ jobs:
         shell: bash
         run: |
           unset RUST_BACKTRACE RUST_LIB_BACKTRACE
+          # Results restored from the cache are never a baseline.
+          rm -rf benches/target/criterion
           git worktree add ../base "origin/${{ github.base_ref }}"
-          if [ -f ../base/benches/Cargo.toml ]; then
+          # Only the same suite measures the same thing (D-058).
+          if cmp -s benches/benches/compare.rs ../base/benches/benches/compare.rs; then
             cd ../base
             CARGO_TARGET_DIR="$GITHUB_WORKSPACE/benches/target" cargo bench --manifest-path benches/Cargo.toml -- --warm-up-time 1 --measurement-time 3 --noplot --save-baseline base
+            touch "$GITHUB_WORKSPACE/base-measured"
           else
-            echo "The base branch has no benchmarks; nothing to compare."
+            echo "The base branch has another benchmark suite; nothing to compare."
           fi
       - name: Run
         shell: bash
         run: |
           unset RUST_BACKTRACE RUST_LIB_BACKTRACE
-          if [ -d benches/target/criterion ]; then
+          if [ -f base-measured ]; then
             cargo bench --manifest-path benches/Cargo.toml -- --warm-up-time 1 --measurement-time 3 --noplot --baseline-lenient base
           else
+            rm -rf benches/target/criterion
             cargo bench --manifest-path benches/Cargo.toml -- --warm-up-time 1 --measurement-time 3 --noplot
           fi
       - name: Run B18 with mimalloc

@@ -11,7 +11,9 @@ differ in CPU from run to run, so stored ratios drift.
 The gate is criterion's own comparison with the base branch, measured
 earlier in the same job (`--save-baseline base`): it fails when one of
 report-err's times is slower than the base's by more than 5% at the lower
-end of the confidence interval.
+end of the confidence interval and by more than 1 ns in the median, so the
+code-alignment noise of a few-nanosecond row does not fail a change
+(D-058).
 """
 
 import json
@@ -19,6 +21,9 @@ import pathlib
 import sys
 
 TOLERANCE = 1.05
+
+# Slower by less than this is not a regression, whatever the percentage.
+FLOOR_NS = 1.0
 
 LIBS = ["report-err", "anyhow", "eyre", "error-stack", "box"]
 
@@ -32,9 +37,11 @@ def load(root):
         title = meta.get("title") or meta["full_id"]
         rows[title] = est["median"]["point_estimate"]
         change = bench.parent.parent / "change" / "estimates.json"
-        if change.exists():
+        base = bench.parent.parent / "base" / "estimates.json"
+        if change.exists() and base.exists():
             interval = json.loads(change.read_text())["mean"]["confidence_interval"]
-            changes[title] = interval["lower_bound"]
+            before = json.loads(base.read_text())["median"]["point_estimate"]
+            changes[title] = (interval["lower_bound"], rows[title] - before)
     return rows, changes
 
 
@@ -115,9 +122,9 @@ def main():
 
     compared = [t for t in changes if ours(t)]
     failed = [
-        f"- {title}: at least {changes[title] * 100:+.1f}% against the base branch"
+        f"- {title}: at least {changes[title][0] * 100:+.1f}% ({changes[title][1]:+.2f} ns) against the base branch"
         for title in sorted(compared)
-        if changes[title] > TOLERANCE - 1
+        if changes[title][0] > TOLERANCE - 1 and changes[title][1] > FLOOR_NS
     ]
     out.append("")
     out.append(f"Compared with the base branch on this runner: {len(compared)} of report-err's times.")

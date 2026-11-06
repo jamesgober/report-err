@@ -40,7 +40,8 @@ Optimisation. Measured against anyhow, eyre, error-stack, and
 - Benchmarks B1 to B18 (PLAN 11.1) in `benches/`, run in CI on three
   platforms by the `Benchmarks` workflow. Each pull request measures the
   base branch on the same runner and fails when one of report-err's times
-  is more than 5% slower; `benches/baseline.json` keeps the 0.6.0 ratios.
+  is more than 5% and more than 1 ns slower; `benches/baseline.json` keeps
+  the 0.6.0 ratios.
 - Missed targets, each on the list for 0.9: `{:#}` (1.33 to 1.55 times
   anyhow) and `{:?}` (1.30 to 1.31), creation on aarch64 (8% to 26%
   slower), and the 64-thread run on two of the four platform and allocator
