@@ -39,6 +39,7 @@ const STYLES: [RenderStyle; 3] = [
 // ---------------------------------------------------------------- T2
 
 #[test]
+#[cfg_attr(miri, ignore = "megabytes of writes; too slow under Miri (D-024)")]
 fn test_attack_t2_many_large_attachments_stay_bounded() {
     let mut error = err!("x");
     for i in 0..10_000u32 {
@@ -122,6 +123,7 @@ impl fmt::Display for Bad {
 impl StdError for Bad {}
 
 #[test]
+#[cfg_attr(miri, ignore = "megabytes of writes; too slow under Miri (D-024)")]
 fn test_attack_t4_misbehaving_display_in_every_guarded_path() {
     let quiet = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
@@ -216,6 +218,7 @@ fn test_attack_t10_root_whose_drop_panics() {
 // ---------------------------------------------------------------- T11
 
 #[test]
+#[cfg_attr(miri, ignore = "megabytes of writes; too slow under Miri (D-024)")]
 fn test_attack_t11_full_tree_on_a_64_kib_stack() {
     // Build, render, search, record, and drop a tree at `max_depth` on a
     // small stack: every walk is iterative (E-104 covers the drop alone).
