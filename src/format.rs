@@ -133,6 +133,11 @@ impl Tail {
         }
     }
 
+    /// Whether more was written than a whole report may hold.
+    fn over(&self) -> bool {
+        self.len > crate::limits::max_render()
+    }
+
     /// The whole text, when it fit.
     fn whole(&self) -> Option<&str> {
         if self.len > KEEP {
@@ -166,6 +171,12 @@ impl Tail {
 
 impl Write for Tail {
     fn write_str(&mut self, s: &str) -> fmt::Result {
+        // A link longer than a whole report is not compared: the write fails,
+        // so a `Display` that writes until its writer fails stops here too
+        // (T4). The caller sees `over` and treats the link as not comparable.
+        if self.over() {
+            return Err(fmt::Error);
+        }
         let mut rest = s.as_bytes();
         while !rest.is_empty() {
             let at = self.len % KEEP;
@@ -234,7 +245,11 @@ impl Buffers {
         };
         let tail = entry.get_or_insert_with(Tail::new);
         tail.len = 0;
-        write!(tail, "{}", Shown::new(&ErrorText(link.error), self.guard))?;
+        let written = write!(tail, "{}", Shown::new(&ErrorText(link.error), self.guard));
+        if tail.over() {
+            return Ok(Text::None);
+        }
+        written?;
         Ok(Text::Buf(slot))
     }
 
@@ -637,7 +652,9 @@ impl Error {
     }
 }
 
-/// Writes to a `fmt::Write` and stops quietly at `max_render` bytes.
+/// Writes to a `fmt::Write` and stops at `max_render` bytes. Once full,
+/// every write fails, so a `Display` that writes until its writer fails
+/// stops too (T4); `render` then adds the truncation line.
 struct Capped<'a> {
     inner: &'a mut dyn Write,
     written: usize,
@@ -647,7 +664,7 @@ struct Capped<'a> {
 impl Write for Capped<'_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         if self.full {
-            return Ok(());
+            return Err(fmt::Error);
         }
         let room = crate::limits::max_render().saturating_sub(self.written);
         let mut take = s.len().min(room);
@@ -659,6 +676,7 @@ impl Write for Capped<'_> {
         self.written += part.len();
         if take < s.len() {
             self.full = true;
+            return Err(fmt::Error);
         }
         Ok(())
     }

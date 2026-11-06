@@ -1,0 +1,18 @@
+# The soak run of PLAN 12.10: hours of 64 threads doing every operation,
+# without and then with a creation hook and a reporter, with resident memory
+# sampled every minute. Not published and not part of the crate's build.
+# Run: cargo run --release --manifest-path soak/Cargo.toml -- 480 soak.csv
+[package]
+name = "report-err-soak"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+report-err = { path = ".." }
+define-err = "0.5"
+
+[profile.release]
+debug = 1
+
+[workspace]

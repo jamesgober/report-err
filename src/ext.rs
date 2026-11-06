@@ -270,7 +270,8 @@ impl Extras {
 pub(crate) const TRUNCATED: &str = "...(truncated)";
 
 /// A `String` writer that keeps at most `limit` bytes, cut at a character
-/// boundary.
+/// boundary. Once cut it fails every write, so a `Display` that writes until
+/// its writer fails stops there (D-059).
 struct Bounded {
     text: String,
     limit: usize,
@@ -280,7 +281,7 @@ struct Bounded {
 impl Write for Bounded {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         if self.cut {
-            return Ok(());
+            return Err(fmt::Error);
         }
         let room = self.limit.saturating_sub(self.text.len());
         if s.len() <= room {
@@ -293,7 +294,7 @@ impl Write for Bounded {
         }
         self.text.push_str(s.get(..at).unwrap_or(""));
         self.cut = true;
-        Ok(())
+        Err(fmt::Error)
     }
 }
 
@@ -364,6 +365,23 @@ mod tests {
         assert_eq!(full.format_bounded(&"x"), "");
         extras.add_section(SectionKind::Note, Cow::Owned("ok".to_string()));
         assert_eq!(extras.sections.len(), 1);
+    }
+
+    #[test]
+    fn test_format_bounded_stops_a_display_that_never_ends() {
+        // T4: writes until its writer fails.
+        struct Forever;
+        impl Display for Forever {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                loop {
+                    f.write_str("x")?;
+                }
+            }
+        }
+        let mut extras = Extras::default();
+        let text = extras.format_bounded(&Forever);
+        assert!(text.len() <= limits::max_bytes(), "{}", text.len());
+        assert!(text.ends_with(TRUNCATED));
     }
 
     #[test]
