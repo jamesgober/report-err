@@ -21,7 +21,7 @@
 - Fuzz targets `ops`, `display_adversary`, and `limits` (`fuzz/`), run for
   60 seconds each in CI.
 - The soak run (`soak/`): hours of 64 threads doing every operation, with
-  resident memory sampled every minute.
+  live heap bytes and resident memory sampled every minute.
 
 ### Fixed
 

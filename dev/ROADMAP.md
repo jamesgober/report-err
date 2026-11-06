@@ -64,7 +64,7 @@ Exit: no open finding; every threat has a passing attack test.
 - [ ] Fuzzing 24 hours per target (`ops`, `display_adversary`, `limits`) in WSL (D-057); a 60-second run of each in CI. The first run (from 2026-11-06 04:52 UTC) stopped early: each target hit its 30-second timeout on input the harness re-formats at every step, and a deletion of `/tmp` by other work ended the `limits` run (D-060). Restarted 2026-11-06 11:49 UTC with the D-059 fix, a 300-second timeout, and libFuzzer's temporary files in the home directory.
 - [x] Attack tests T1 to T16, each named in `docs/SECURITY.md`; T4's test found two hangs, fixed (D-055), and a third in the byte budget for section text (D-059); T6 extended to OSC, carriage return, C1, and a forged first line; T9 in a child process.
 - [x] `docs/SECURITY.md`.
-- [ ] Soak: 8 hours on Windows and Linux, flat memory: started 2026-11-06 04:55 UTC on both.
+- [ ] Soak: 8 hours on Windows and Linux, flat memory. The first run passed on Linux and failed on Windows at +1.75% resident memory in the plain half, the system heap settling over the first hour rather than a leak (D-061). Rerun from 2026-11-06 17:13 UTC on both, with live heap bytes counted exactly.
 - [x] The 64 KiB stack test: build, render, search, record, and drop a full tree (`test_attack_t11_full_tree_on_a_64_kib_stack`; 10.3's 0.7 idea).
 
 ## v0.8.0 - Alpha
