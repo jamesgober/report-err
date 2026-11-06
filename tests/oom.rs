@@ -12,6 +12,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+#[cfg_attr(miri, allow(dead_code))]
 struct Failing;
 
 static FAIL: AtomicBool = AtomicBool::new(false);
@@ -33,6 +34,10 @@ unsafe impl GlobalAlloc for Failing {
     }
 }
 
+// Not under Miri: a global allocator that forwards to `System` makes Miri
+// interpret the platform allocator itself (D-024), and the check does not run
+// there anyway.
+#[cfg(not(miri))]
 #[global_allocator]
 static ALLOCATOR: Failing = Failing;
 
