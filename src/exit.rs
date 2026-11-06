@@ -96,7 +96,8 @@ pub(crate) fn unraisable_line(error: &Error) {
 }
 
 /// Writes to an `io::Write` and stops at `max_render` bytes. Write failures
-/// (a closed or broken pipe) end the output quietly.
+/// (a closed or broken pipe) end the output quietly. Once full, every write
+/// fails, so a `Display` that writes until its writer fails stops too (T4).
 struct Capped<W: std::io::Write> {
     inner: W,
     written: usize,
@@ -106,7 +107,7 @@ struct Capped<W: std::io::Write> {
 impl<W: std::io::Write> fmt::Write for Capped<W> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         if self.full {
-            return Ok(());
+            return Err(fmt::Error);
         }
         let room = limits::max_render().saturating_sub(self.written);
         let mut take = s.len().min(room);
@@ -120,6 +121,7 @@ impl<W: std::io::Write> fmt::Write for Capped<W> {
         self.written += part.len();
         if take < s.len() {
             self.full = true;
+            return Err(fmt::Error);
         }
         Ok(())
     }
@@ -140,10 +142,10 @@ mod tests {
             written: limits::max_render() - 1,
             full: false,
         };
-        out.write_str("é").ok();
+        assert!(out.write_str("é").is_err());
         assert!(out.full);
         assert!(out.inner.is_empty());
-        out.write_str("more").ok();
+        assert!(out.write_str("more").is_err());
         assert!(out.inner.is_empty());
     }
 

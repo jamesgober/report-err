@@ -11,6 +11,24 @@
 
 ## [Unreleased]
 
+### Added
+
+- `docs/SECURITY.md`: every threat, its defence, its test, and its cost;
+  the budgets; how to report a vulnerability.
+- Attack tests for the threats not tested where their code lives
+  (`tests/attack.rs`), and an allocation-failure test in a child process
+  (`tests/oom.rs`).
+- Fuzz targets `ops`, `display_adversary`, and `limits` (`fuzz/`), run for
+  60 seconds each in CI.
+- The soak run (`soak/`): hours of 64 threads doing every operation, with
+  resident memory sampled every minute.
+
+### Fixed
+
+- A `Display` that writes until its writer fails no longer hangs `render`,
+  `ExitReport`, or the report: both output caps fail every write once full,
+  and the report's repeat check stops copying a link past `max_render`.
+
 ---
 
 ## [0.6.0] - 2026-11-06

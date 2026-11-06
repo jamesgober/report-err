@@ -194,6 +194,7 @@ let page = boundary(|| plugin.render(&page)).context("plugin `gallery` failed")?
 - [`docs/PLATFORM-NOTES.md`](./docs/PLATFORM-NOTES.md): `no_std`, `panic = "abort"`, backtraces, and targets.
 - [`docs/UNSAFE.md`](./docs/UNSAFE.md): the one-word representation, its `unsafe` core, and how Miri checks it.
 - [`docs/PERFORMANCE.md`](./docs/PERFORMANCE.md): measured against anyhow, eyre, error-stack, and `Box<dyn Error>` on three platforms.
+- [`docs/SECURITY.md`](./docs/SECURITY.md): the threats, their defences and tests, the budgets, and how to report a vulnerability.
 - [`dev/PLAN.md`](./dev/PLAN.md): the design, the threats and their tests, performance, and the decision log.
 
 <hr>

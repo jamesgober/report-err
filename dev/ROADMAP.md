@@ -61,8 +61,11 @@ Exit: every `PLAN.md` 11.1 target measured; each met or its reason recorded and 
 
 ## v0.7.0 - Hardening
 Exit: no open finding; every threat has a passing attack test.
-- [ ] Fuzzing 24 hours per target; attack tests T1 to T16; `docs/SECURITY.md`.
-- [ ] Soak: 8 hours on Windows and Linux, flat memory; the 64 KiB stack test.
+- [ ] Fuzzing 24 hours per target (`ops`, `display_adversary`, `limits`): started 2026-11-06 04:52 UTC in WSL (D-057); a 60-second run of each in CI.
+- [x] Attack tests T1 to T16, each named in `docs/SECURITY.md`; T4's test found two hangs, fixed (D-055); T6 extended to OSC, carriage return, C1, and a forged first line; T9 in a child process.
+- [x] `docs/SECURITY.md`.
+- [ ] Soak: 8 hours on Windows and Linux, flat memory: started 2026-11-06 04:55 UTC on both.
+- [x] The 64 KiB stack test: build, render, search, record, and drop a full tree (`test_attack_t11_full_tree_on_a_64_kib_stack`; 10.3's 0.7 idea).
 
 ## v0.8.0 - Alpha
 Exit: both migrations green; every surprise fixed or recorded in `docs/MIGRATING.md`.
