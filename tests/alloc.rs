@@ -296,10 +296,11 @@ fn test_alloc_code_found_in_the_chain_reads_without_allocating() {
 }
 
 #[test]
-fn test_alloc_first_trace_is_one_block_then_none_to_the_budget() {
+fn test_alloc_first_trace_is_two_blocks_then_none_to_the_budget() {
+    // The extension block and the extras in it (D-052).
     let error = err!("x");
     let (error, count) = allocs(|| error.trace());
-    assert_eq!(count, 1);
+    assert_eq!(count, 2);
     let (_, count) = allocs(|| error.trace().trace().trace());
     assert_eq!(count, 0);
 }
@@ -319,9 +320,9 @@ fn test_alloc_report_without_a_reporter_is_free() {
 #[test]
 fn test_alloc_group_and_suppress() {
     let (group, count) = allocs(|| Error::group("g", [err!("a"), err!("b")]));
-    // The group's node, its extension block, the children's vector, and the
-    // two children.
-    assert_eq!(count, 5);
+    // The group's node, its extension block and extras, the children's
+    // vector, and the two children.
+    assert_eq!(count, 6);
     let (_, count) = allocs(|| group.find::<io::Error>());
     assert_eq!(count, 0);
 }

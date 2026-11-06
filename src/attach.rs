@@ -10,6 +10,26 @@ use core::marker::PhantomData;
 use crate::error::Error;
 use crate::ext::{show_as, Attachment, SectionData, SectionKind};
 
+/// The bytes an attachment is charged against `max_bytes`: its own size,
+/// plus the heap bytes of the common owned buffers (PLAN 10.3). Other types
+/// count their own size only. After monomorphisation the checks are
+/// constant branches.
+fn charged<A: 'static>(value: &A) -> usize {
+    let value: &dyn Any = value;
+    let heap = if let Some(text) = value.downcast_ref::<alloc::string::String>() {
+        text.capacity()
+    } else if let Some(bytes) = value.downcast_ref::<alloc::vec::Vec<u8>>() {
+        bytes.capacity()
+    } else if let Some(text) = value.downcast_ref::<Box<str>>() {
+        text.len()
+    } else if let Some(bytes) = value.downcast_ref::<Box<[u8]>>() {
+        bytes.len()
+    } else {
+        0
+    };
+    core::mem::size_of::<A>().saturating_add(heap)
+}
+
 impl Error {
     /// Attaches a value of any type, to be read back by type with
     /// [`attachment`](Error::attachment). Attachments are **opaque**: never
@@ -18,8 +38,9 @@ impl Error {
     /// in the report.
     ///
     /// Up to 32 are kept; past that, or past the error's byte budget (64
-    /// KiB, counting each value's own size), the new one is dropped and
-    /// counted under `Omitted:`.
+    /// KiB, counting each value's own size, and the heap bytes of a
+    /// `String`, `Vec<u8>`, `Box<str>`, or `Box<[u8]>`), the new one is
+    /// dropped and counted under `Omitted:`.
     ///
     /// ```
     /// #[derive(Debug, Clone, Copy, PartialEq)]
@@ -30,7 +51,7 @@ impl Error {
     /// assert!(!format!("{error:?}").contains("RequestId"));
     /// ```
     pub fn attach<A: Send + Sync + 'static>(mut self, value: A) -> Error {
-        let size = core::mem::size_of::<A>();
+        let size = charged(&value);
         self.raw.extras_mut().add_attachment(
             Attachment {
                 value: Box::new(value),
@@ -50,7 +71,7 @@ impl Error {
     /// assert_eq!(error.attachment::<&str>(), Some(&"tenant 42"));
     /// ```
     pub fn attach_display<A: Display + Send + Sync + 'static>(mut self, value: A) -> Error {
-        let size = core::mem::size_of::<A>();
+        let size = charged(&value);
         let attachment = Attachment {
             value: Box::new(value),
             display: Some(show_as::<A>),

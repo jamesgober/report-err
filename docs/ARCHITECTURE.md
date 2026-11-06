@@ -24,7 +24,7 @@ How report-err is put together: what each module owns, the paths an error takes 
 
 ## One error, one word
 
-`Error` is a single pointer to one heap node: an 80-byte header (on 64-bit targets) followed by the root error itself. The header holds the vtable for the root's type, the origin location, the code and the severity and exit overrides, two atomic flags (made from a panic, reported), the innermost context layer, and a pointer to the extension block. Everything else an error can gather lives in the extension block, which is made the first time it is needed: context layers two and up, attachments, sections, trace points, the backtrace, children, suppressed errors, the creation hook's fields, and the counters of what a budget dropped. A plain error is one allocation; an error with one context layer is still one.
+`Error` is a single pointer to one heap node: an 80-byte header (on 64-bit targets) followed by the root error itself. The header holds the vtable for the root's type, the origin location, the code and the severity and exit overrides, two atomic flags (made from a panic, reported), the innermost context layer, and a pointer to the extension block, made the first time it is needed. The extension block (192 bytes) holds context layers two to five, a vector for the sixth and up, and a pointer to the extras, made on first use: attachments, sections, trace points, the backtrace, children, suppressed errors, the creation hook's fields, and the counters of what a budget dropped. A plain error is one allocation; an error with one context layer is still one; with three, two. The extras are apart because context layers are the common case, and their 472 bytes would otherwise be allocated and freed with every error that has two layers.
 
 ## Modules
 
@@ -33,7 +33,7 @@ How report-err is put together: what each module owns, the paths an error takes 
 | `raw` | the node, the vtable, the flat store of context layers and their `source()` links; the only module with `unsafe` code |
 | `error` | `Error`, the constructors, `context`, downcasting, `chain`, `root_cause` |
 | `frame` | one context layer's value: a literal, a `String`, or a boxed `Display` |
-| `ext` | the extension block's safe part (`Extras`): attachments, sections, trace points, children, suppressed errors, fields, counters |
+| `ext` | the extras (`Extras`), safe data: attachments, sections, trace points, children, suppressed errors, fields, counters |
 | `chain` | the cause chain, outermost first, bounded by `max_chain` |
 | `group` | several causes, suppressed errors, `split`, `flatten`, `find`, `Errors`, `CollectAll` |
 | `codes` | code, severity, category, kinds, public message, exit code, looked up from define-err |
@@ -52,7 +52,7 @@ How report-err is put together: what each module owns, the paths an error takes 
 2. **Travels.** Each `.context(..)` adds a layer; each `.trace()` records a point; `.note(..)`, `.attach(..)`, `.coded(..)`, `push_child`, `suppress` add the rest. None of these runs the hook or captures a backtrace.
 3. **Read.** `chain()`, `find`, `code()`, `severity()`, `category()`, `kinds()`, `public_message()`, `exit_code()` read what is there; none of them allocates.
 4. **Reported.** `report()` sets the reported flag once and, when a reporter is installed, builds the error's `ErrorRecord` and hands it to define-err's facade. `ExitReport` prints the report to standard error and exits with the error's code. `unraisable` reports an error with nowhere to go, as unhandled.
-5. **Dropped.** The node and its extension block are freed; children and suppressed errors are dropped with them. The tree's depth is bounded, so the drop's recursion is bounded too.
+5. **Dropped.** The node and its blocks are freed; children and suppressed errors are dropped with them. The tree's depth is bounded, so the drop's recursion is bounded too.
 
 ## Bounds
 

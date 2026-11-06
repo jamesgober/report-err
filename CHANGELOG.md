@@ -13,6 +13,44 @@
 
 ---
 
+## [0.6.0] - 2026-11-06
+
+Optimisation. Measured against anyhow, eyre, error-stack, and
+`Box<dyn Error>` on Linux x86_64, Windows x86_64, and Linux aarch64;
+`docs/PERFORMANCE.md` has every number.
+
+### Changed
+
+- The extras (attachments, sections, trace points, the backtrace, children,
+  suppressed errors, fields) are a block of their own, made on first use.
+  An error with only context layers now allocates 192 bytes for layers two
+  and up instead of 656, so dropping one with three layers takes 0.58 to
+  0.72 of anyhow's time (it was 1.00 to 1.30), and creating one 0.64 to
+  0.91. An error with extras and fewer than two layers makes two blocks
+  instead of one.
+- The report (`{:?}`) writes the root's text from the buffer the repeat
+  check filled instead of formatting it again, and writes locations and
+  trace numbers without the formatter's integer path; a chain of one link
+  is not buffered at all.
+- An attachment that is a `String`, `Vec<u8>`, `Box<str>`, or `Box<[u8]>`
+  counts its heap bytes against `max_bytes`, not only its own size.
+
+### Performance
+
+- Benchmarks B1 to B18 (PLAN 11.1) in `benches/`, run in CI on three
+  platforms by the `Benchmarks` workflow. Each pull request measures the
+  base branch on the same runner and fails when one of report-err's times
+  is more than 5% and more than 1 ns slower; `benches/baseline.json` keeps
+  the 0.6.0 ratios.
+- Missed targets, each on the list for 0.9: `{:#}` (1.33 to 1.55 times
+  anyhow) and `{:?}` (1.30 to 1.31), creation on aarch64 (8% to 26%
+  slower), and the 64-thread run on two of the four platform and allocator
+  pairs.
+- One-allocation formatted messages (RD-14) measured and not adopted: the
+  gain fell short of the 20% required on every platform.
+
+---
+
 ## [0.5.0] - 2026-11-03
 
 Feature complete. Requires define-err 0.5.
@@ -230,7 +268,8 @@ The scaffold and the plan. No functional code yet.
   cases, open decisions, and the decision log D-001 to D-008),
   `dev/DIRECTIVES.md`, and `dev/ROADMAP.md`.
 
-[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/jamesgober/report-err/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/jamesgober/report-err/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/jamesgober/report-err/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jamesgober/report-err/compare/v0.2.0...v0.3.0

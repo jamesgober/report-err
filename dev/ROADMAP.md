@@ -51,12 +51,13 @@ Exit: every P0 to P2 item implemented and tested on Linux, macOS, and Windows; L
 - [x] Edge cases E-81 to E-107 (`tests/groups.rs`, `tests/panic.rs`, `tests/report.rs`, `tests/limits.rs`, `tests/exit.rs`).
 - [x] `docs/ARCHITECTURE.md`, `docs/PLATFORM-NOTES.md`.
 
-## v0.6.0 - Optimisation
+## v0.6.0 - Optimisation (DONE, 2026-11-06)
 Exit: every `PLAN.md` 11.1 target measured; each met or its reason recorded and reviewed.
-- [ ] Benchmarks B1 to B18 against anyhow, eyre, error-stack, and `Box<dyn Error>` on Windows, Linux, and aarch64.
-- [ ] RD-14 decided with numbers; the success-path finding re-measured on aarch64.
-- [ ] `docs/PERFORMANCE.md`; criterion baselines; the 5% regression gate.
-- [ ] From 0.4.0 (D-038), on a quiet machine: B6 against its within-5% target, B9 (drop) against its 0.3.0 lead, and B13 against an allowance re-set for a report of equal content; B12 (D-022) as before.
+- [x] Benchmarks B1 to B18 against anyhow, eyre, error-stack, and `Box<dyn Error>` on Windows, Linux, and aarch64, in CI (D-051; Apple silicon replaced by GitHub's Linux aarch64 runner).
+- [x] RD-14 decided with numbers: not adopted (D-053); the success path re-measured on aarch64: level (1.03).
+- [x] `docs/PERFORMANCE.md`; ratios stored in `benches/baseline.json`; the 5% gate active, against the base branch on the same runner (D-056).
+- [x] From 0.4.0 (D-038): B9 fixed (0.58 to 0.72 times anyhow, D-052); B6 met on x86_64 and missed on aarch64; B12 and B13 measured, missed, and listed for 0.9.x below with their reasons.
+- [x] 10.3's 0.6 idea: heap bytes of buffer attachments count against `max_bytes` (D-054).
 
 ## v0.7.0 - Hardening
 Exit: no open finding; every threat has a passing attack test.
@@ -85,7 +86,14 @@ Exit: every item below is fixed, or measured again and listed in the readiness n
   - D-024: what Miri does not run (doc tests, the allocation-count binary, file-reading tests). Find another way to cover each, or record why none is needed.
   - D-026: a boxed root answers `downcast_ref` only as `Box<dyn Error>`. Revisit once the API is otherwise frozen.
   - D-027 (`Trace:` printed only when the error travelled) and D-028 (`None` with a section becomes `no value`): confirm with real use from the 0.8 migrations.
-  - RD-14 (one-allocation formatted messages, decided at 0.6), and every 11.1 target that 0.6 recorded as missed or as an exception.
+  - RD-14 (one-allocation formatted messages): not adopted at 0.6 (D-053); measure again if the formatting path changes.
+  - The 11.1 targets 0.6.0 missed (`docs/PERFORMANCE.md`), each to be fixed or measured again with its reason:
+    - B12 `{:#}`: 1.33 / 1.55 / 1.51 times anyhow (target at least 20% faster). The de-duplication buffer (D-022) is the cost; look for a check that needs no copy of the root's text and does not format it twice (the bufferless matcher tried at 0.6 formatted it twice and was slower, D-052).
+    - B13 `{:?}`: 1.30 / 1.31 times anyhow (allowance 20%); 4.0 to 4.2 times for a one-layer error, which prints `Location:` where anyhow prints nothing. Profile the report's writes; consider one pass that both de-duplicates and writes.
+    - B9 drop and B8 create: met at 0.6 (0.58 to 0.72, 0.64 to 0.91); keep both under the gate and confirm on a quiet run.
+    - B3 to B6 on aarch64: 1.11, 1.09, 1.08, 1.26 against "within 5%"; B8 with 3 layers on aarch64 0.91 against "at least 20% faster". Look at the creation path's code generation on aarch64 (the location store and the backtrace check).
+    - B18 under contention: 1.09 on Linux x86_64 with the system allocator, 1.13 on aarch64 with mimalloc. Measure again with longer runs before treating as real.
+    - One-layer `source()` walk and `chain()`: 7% to 39% slower than anyhow (2 to 3 ns), faster from three layers.
   - Every edge case or threat test that a version marked as partial or skipped.
 - [ ] **Fresh performance tuning pass** over every benchmark of `PLAN.md` 11.1 against anyhow, eyre, and error-stack, on Windows, Linux, and aarch64, with criterion baselines refreshed; each regression or missed target fixed or listed.
 - [ ] **Security and `unsafe` review, again**: `src/raw.rs` line by line against `docs/UNSAFE.md` (every `SAFETY:` comment still true, I-1 to I-13 and any later invariant still tested), Miri under both models and AddressSanitizer on the whole suite, fuzzing re-run, and every threat T1 to T16 re-checked against the code as it stands.
