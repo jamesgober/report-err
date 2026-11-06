@@ -28,6 +28,8 @@
 - A `Display` that writes until its writer fails no longer hangs `render`,
   `ExitReport`, or the report: both output caps fail every write once full,
   and the report's repeat check stops copying a link past `max_render`.
+- The same `Display` no longer hangs `note`, `warning`, `suggestion`, or a
+  hook field: the byte budget's writer also fails once full.
 
 ---
 

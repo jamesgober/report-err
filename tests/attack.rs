@@ -144,6 +144,14 @@ fn test_attack_t4_misbehaving_display_in_every_guarded_path() {
         }
     }
     std::panic::set_hook(quiet);
+    // A section is formatted when it is added, into the byte budget (D-059).
+    // A panic there is the caller's own code on the caller's stack, as in
+    // `format!`, so only the other three are tried.
+    for bad in [Bad::Fails, Bad::Huge, Bad::Forever] {
+        let error = err!("x").note(bad).warning(bad).suggestion(bad);
+        let kept: usize = error.sections().map(|s| s.text.len()).sum();
+        assert!(kept <= 64 * 1024, "{bad:?} {kept}");
+    }
     // The endless writer was stopped, not left running: it got as far as
     // the caps and no further.
     assert!(FOREVER_WRITES.load(Ordering::Relaxed) < 64 << 20);

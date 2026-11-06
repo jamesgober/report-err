@@ -74,10 +74,23 @@ fuzz_target!(|data: &[u8]| {
         if input.is_empty() {
             break;
         }
-        error = match input.byte() % 4 {
+        error = match input.byte() % 5 {
             0 => error.context(adversary(&mut input)),
             1 => error.attach_display(adversary(&mut input)),
             2 => error.suppress(Error::new(adversary(&mut input))),
+            // A section is formatted when it is added (D-059): a panic there
+            // is the caller's own, so it is caught here, not by the library.
+            3 => {
+                let bad = adversary(&mut input);
+                match catch_unwind(AssertUnwindSafe(|| Error::msg("noted").note(bad))) {
+                    Ok(noted) => {
+                        let kept: usize = noted.sections().map(|s| s.text.len()).sum();
+                        assert!(kept <= report_err::limits().max_bytes as usize);
+                        error.suppress(noted)
+                    }
+                    Err(_) => error,
+                }
+            }
             _ => Error::group("group", [error, Error::new(adversary(&mut input))]),
         };
     }
