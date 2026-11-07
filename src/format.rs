@@ -123,6 +123,8 @@ const KEEP: usize = 256;
 struct Tail {
     buf: [u8; KEEP],
     len: usize,
+    /// `max_render`, read once when the buffer is made, not at every write.
+    max: usize,
 }
 
 impl Tail {
@@ -130,12 +132,13 @@ impl Tail {
         Tail {
             buf: [0; KEEP],
             len: 0,
+            max: crate::limits::max_render(),
         }
     }
 
     /// Whether more was written than a whole report may hold.
     fn over(&self) -> bool {
-        self.len > crate::limits::max_render()
+        self.len > self.max
     }
 
     /// The whole text, when it fit.
@@ -307,7 +310,9 @@ impl Display for Error {
     }
 }
 
-/// `{:#}`: every link on one line, joined by `": "`, repeats skipped.
+/// `{:#}`: every link on one line, joined by `": "`, repeats skipped. Not
+/// inlined, so `{}` keeps the small frame it needs.
+#[inline(never)]
 pub(crate) fn write_chain(error: &Error, f: &mut dyn Write, mode: Mode) -> fmt::Result {
     let mut buffers = Buffers::new(mode);
     let mut prev = Text::None;

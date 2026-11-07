@@ -154,6 +154,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # cargo-fuzz is built with stable: its locked rustix 0.36 turns on
+      # `rustc_` attributes when it sees a nightly compiler, which current
+      # nightly rejects.
+      - uses: dtolnay/rust-toolchain@stable
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt, clippy
@@ -163,7 +167,7 @@ jobs:
             fuzz
             soak
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --locked --version 0.13.1
+        run: cargo +stable install cargo-fuzz --locked --version 0.13.1
       - name: Format and Clippy (fuzz and soak)
         run: |
           cargo fmt --manifest-path fuzz/Cargo.toml -- --check
