@@ -33,6 +33,12 @@
 - The source archives GitHub makes for a release build: they now include
   `tests/`, which `Cargo.toml` names.
 
+### Changed
+
+- The benchmark gate on pull requests measures the base branch and the
+  change in turn three times and fails only on a slowdown of more than 5% in
+  all three rounds.
+
 ---
 
 ## [0.6.0] - 2026-11-06

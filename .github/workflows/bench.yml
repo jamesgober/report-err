@@ -3,10 +3,11 @@ name: Benchmarks
 # The measured comparison of PLAN 11: report-err against anyhow, eyre,
 # error-stack, and Box<dyn Error> on Linux x86_64, Windows x86_64, and Linux
 # aarch64. Ratios come from the same run on the same runner, so the runner's
-# own speed cancels out. On a pull request the base branch is measured first
-# on the same runner, and the gate fails when one of report-err's own times
-# is more than 5% slower than the base's at the lower end of criterion's
-# confidence interval (D-056). A ratio that drifts more than 5% from
+# own speed cancels out. On a pull request the base branch and the head are
+# measured in turn, three times each, on the same runner, and the gate fails
+# when one of report-err's own times is more than 5% (and 1 ns) slower than
+# the base's in all three rounds (D-065): a shared runner's noise does not
+# repeat three times. A ratio that drifts more than 5% from
 # benches/baseline.json is reported as a warning.
 
 on:
@@ -59,40 +60,59 @@ jobs:
             echo '```'
           } | tee env.md
           cat env.md >> "$GITHUB_STEP_SUMMARY"
-      - name: Run the base branch
-        if: github.event_name == 'pull_request'
-        shell: bash
-        run: |
-          unset RUST_BACKTRACE RUST_LIB_BACKTRACE
-          # Results restored from the cache are never a baseline.
-          rm -rf benches/target/criterion
-          git worktree add ../base "origin/${{ github.base_ref }}"
-          # Only the same suite measures the same thing (D-058).
-          if cmp -s benches/benches/compare.rs ../base/benches/benches/compare.rs; then
-            cd ../base
-            CARGO_TARGET_DIR="$GITHUB_WORKSPACE/benches/target" cargo bench --manifest-path benches/Cargo.toml -- --warm-up-time 1 --measurement-time 3 --noplot --save-baseline base
-            touch "$GITHUB_WORKSPACE/base-measured"
-          else
-            echo "The base branch has another benchmark suite; nothing to compare."
-          fi
       - name: Run
         shell: bash
         run: |
           unset RUST_BACKTRACE RUST_LIB_BACKTRACE
-          if [ -f base-measured ]; then
-            cargo bench --manifest-path benches/Cargo.toml -- --warm-up-time 1 --measurement-time 3 --noplot --baseline-lenient base
-          else
-            rm -rf benches/target/criterion
-            cargo bench --manifest-path benches/Cargo.toml -- --warm-up-time 1 --measurement-time 3 --noplot
+          # Results restored from the cache are never compared.
+          rm -rf benches/target/criterion
+          cargo bench --manifest-path benches/Cargo.toml -- --warm-up-time 1 --measurement-time 3 --noplot
+      - name: Base and head in turn
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          unset RUST_BACKTRACE RUST_LIB_BACKTRACE
+          git worktree add ../base "origin/${{ github.base_ref }}"
+          # Only the same suite measures the same thing (D-058).
+          if ! cmp -s benches/benches/compare.rs ../base/benches/benches/compare.rs; then
+            echo "The base branch has another benchmark suite; nothing to compare."
+            exit 0
           fi
+          # The benchmark executables of one side, built in its own target
+          # directory, so neither rebuilds the other.
+          executables() {
+            cargo bench --manifest-path benches/Cargo.toml --no-run --message-format=json 2>/dev/null | python -c "
+          import json, sys
+          for line in sys.stdin:
+              m = json.loads(line)
+              if m.get('reason') == 'compiler-artifact' and m.get('executable') and 'bench' in m['target']['kind']:
+                  print(m['executable'])"
+          }
+          executables > head.txt
+          (cd ../base && CARGO_TARGET_DIR="$RUNNER_TEMP/base-target" executables) > base.txt
+          # report-err's own rows: its side of each comparison, and the
+          # groups only it has.
+          only='/report-err|^(boundary|codes|collect|hook)/'
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/alternate"
+          for round in 1 2 3; do
+            for side in base head; do
+              while read -r exe; do
+                command -v cygpath > /dev/null && exe="$(cygpath -u "$exe")"
+                "$exe" --bench "$only" --warm-up-time 1 --measurement-time 3 --noplot --save-baseline "$side$round" > /dev/null
+              done < "$side.txt"
+            done
+          done
+          touch alternated
       - name: Run B18 with mimalloc
         if: matrix.platform != 'windows-x86_64'
         shell: bash
         run: cargo bench --manifest-path benches/Cargo.toml --features mimalloc --bench extra -- contention --warm-up-time 1 --measurement-time 3 --noplot
-      - name: Ratios and the 5% gate
+      - name: Ratios and the gate
         shell: bash
         run: |
-          python benches/ratios.py benches/target/criterion ${{ matrix.platform }} --baseline benches/baseline.json --write-baseline measured.json | tee ratios.md
+          gate=()
+          if [ -f alternated ]; then gate=(--alternating "$RUNNER_TEMP/alternate/criterion" 3); fi
+          python benches/ratios.py benches/target/criterion ${{ matrix.platform }} --baseline benches/baseline.json --write-baseline measured.json "${gate[@]}" | tee ratios.md
           cat ratios.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()

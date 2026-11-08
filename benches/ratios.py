@@ -2,18 +2,28 @@
 library, and gates regressions (PLAN 11.3, D-056).
 
     python benches/ratios.py <criterion dir> <platform> [--baseline FILE] [--write-baseline FILE]
+                             [--alternating <criterion dir> <rounds>]
 
 A ratio is report-err's median time over the other library's, measured in
 the same run, so a slow or busy machine moves both sides. A ratio more than
 5% above the stored baseline's for the same platform is a warning: runners
 differ in CPU from run to run, so stored ratios drift.
 
-The gate is criterion's own comparison with the base branch, measured
-earlier in the same job (`--save-baseline base`): it fails when one of
-report-err's times is slower than the base's by more than 5% at the lower
-end of the confidence interval and by more than 1 ns in the median, so the
-code-alignment noise of a few-nanosecond row does not fail a change
-(D-058).
+In CI the gate is `--alternating`: the job measures the base branch and the
+head in turn, `rounds` times, on the same runner (`--save-baseline base1`,
+`head1`, `base2`, ...), and fails only when one of report-err's times is
+slower than the base's by more than 5% and by more than 1 ns in every round.
+A shared runner's noise, which moved a different row on a different
+platform in each run, does not repeat in every round; a regression does
+(D-065).
+
+On a quiet machine the strict gate is criterion's own comparison: measure
+the base with `--save-baseline base`, then the head with `--baseline base`,
+and run this script on that criterion directory without `--alternating`. It
+fails when one of report-err's times is slower than the base's by more than
+5% at the lower end of the confidence interval and by more than 1 ns in the
+median, so the code-alignment noise of a few-nanosecond row does not fail a
+change (D-058).
 """
 
 import json
@@ -43,6 +53,37 @@ def load(root):
             before = json.loads(base.read_text())["median"]["point_estimate"]
             changes[title] = (interval["lower_bound"], rows[title] - before)
     return rows, changes
+
+
+def median(path):
+    return json.loads(path.read_text())["median"]["point_estimate"]
+
+
+def alternating(root, rounds):
+    """report-err's own times from the alternating runs: for each, one
+    (relative change, nanoseconds) pair per round, head against base."""
+    results = {}
+    for head in pathlib.Path(root).rglob("head1/benchmark.json"):
+        meta = json.loads(head.read_text())
+        title = meta.get("title") or meta["full_id"]
+        if not ours(title):
+            continue
+        bench = head.parent.parent
+        pairs = []
+        for i in range(1, rounds + 1):
+            before = bench / f"base{i}" / "estimates.json"
+            after = bench / f"head{i}" / "estimates.json"
+            if not (before.exists() and after.exists()):
+                break
+            b, a = median(before), median(after)
+            pairs.append((a / b - 1, a - b))
+        if len(pairs) == rounds:
+            results[title] = pairs
+    return results
+
+
+def slower(change, delta):
+    return change > TOLERANCE - 1 and delta > FLOOR_NS
 
 
 def split(title):
@@ -79,6 +120,10 @@ def main():
             baseline = json.loads(path.read_text()).get(platform)
     if "--write-baseline" in args:
         write = pathlib.Path(args[args.index("--write-baseline") + 1])
+    alternate = None
+    if "--alternating" in args:
+        at = args.index("--alternating")
+        alternate = (pathlib.Path(args[at + 1]), int(args[at + 2]))
 
     rows, changes = load(root)
     table = {}
@@ -124,13 +169,34 @@ def main():
     failed = [
         f"- {title}: at least {changes[title][0] * 100:+.1f}% ({changes[title][1]:+.2f} ns) against the base branch"
         for title in sorted(compared)
-        if changes[title][0] > TOLERANCE - 1 and changes[title][1] > FLOOR_NS
+        if slower(*changes[title])
     ]
-    out.append("")
-    out.append(f"Compared with the base branch on this runner: {len(compared)} of report-err's times.")
+    if compared:
+        out.append("")
+        out.append(f"Compared with the base branch on this runner: {len(compared)} of report-err's times.")
+    if alternate:
+        rounds = alternate[1]
+        results = alternating(*alternate)
+        out.append("")
+        out.append(f"Base and head measured in turn {rounds} times on this runner: {len(results)} of report-err's times.")
+        some = []
+        for title in sorted(results):
+            pairs = results[title]
+            shown = ", ".join(f"{c * 100:+.1f}%" for c, _ in pairs)
+            line = f"- {title}: {shown} ({pairs[-1][1]:+.2f} ns in the last round)"
+            hits = sum(slower(c, d) for c, d in pairs)
+            if hits == rounds:
+                failed.append(line)
+            elif hits:
+                some.append(line)
+        if some:
+            out.append("")
+            out.append("Slower by more than 5% in some rounds but not all (noise, not a regression):")
+            out.extend(some)
     if failed:
         out.append("")
-        out.append("Slower than the base branch by more than 5%:")
+        every = f" in all {alternate[1]} rounds" if alternate else ""
+        out.append(f"Slower than the base branch by more than 5%{every}:")
         out.extend(failed)
     print("\n".join(out))
 
