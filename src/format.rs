@@ -125,22 +125,12 @@ struct Tail {
     len: usize,
 }
 
-/// `configure` refuses a `max_render` below 4 KiB, so a text that
-/// fits the buffer is never over it, and the limits are read only once the
-/// buffer has wrapped (D-063).
-const _: () = assert!(KEEP < 4096);
-
 impl Tail {
     fn new() -> Tail {
         Tail {
             buf: [0; KEEP],
             len: 0,
         }
-    }
-
-    /// Whether more was written than a whole report may hold.
-    fn over(&self) -> bool {
-        self.len > KEEP && self.len > crate::limits::max_render()
     }
 
     /// The whole text, when it fit.
@@ -176,12 +166,6 @@ impl Tail {
 
 impl Write for Tail {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        // A link longer than a whole report is not compared: the write fails,
-        // so a `Display` that writes until its writer fails stops here too
-        // (T4). The caller sees `over` and treats the link as not comparable.
-        if self.over() {
-            return Err(fmt::Error);
-        }
         let mut rest = s.as_bytes();
         while !rest.is_empty() {
             let at = self.len % KEEP;
@@ -194,6 +178,31 @@ impl Write for Tail {
             rest = later;
         }
         Ok(())
+    }
+}
+
+/// A `Tail` that fails every write once more than `max` bytes were written
+/// to it, for guarded output only (D-063). A link longer than a whole report
+/// is not compared, and a `Display` that writes until its writer fails stops
+/// here (T4). Unguarded `{:#}` and `{:?}` write to the `Tail` directly, as
+/// they write any `Display` without a guard.
+struct Limited<'a> {
+    tail: &'a mut Tail,
+    max: usize,
+}
+
+impl Limited<'_> {
+    fn over(&self) -> bool {
+        self.tail.len > self.max
+    }
+}
+
+impl Write for Limited<'_> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        if self.over() {
+            return Err(fmt::Error);
+        }
+        self.tail.write_str(s)
     }
 }
 
@@ -250,11 +259,19 @@ impl Buffers {
         };
         let tail = entry.get_or_insert_with(Tail::new);
         tail.len = 0;
-        let written = write!(tail, "{}", Shown::new(&ErrorText(link.error), self.guard));
-        if tail.over() {
-            return Ok(Text::None);
+        if self.guard {
+            let mut limited = Limited {
+                tail,
+                max: crate::limits::max_render(),
+            };
+            let written = write!(limited, "{}", Shown::guarded(&ErrorText(link.error)));
+            if limited.over() {
+                return Ok(Text::None);
+            }
+            written?;
+        } else {
+            write!(tail, "{}", ErrorText(link.error))?;
         }
-        written?;
         Ok(Text::Buf(slot))
     }
 
