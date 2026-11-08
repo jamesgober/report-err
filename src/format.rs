@@ -206,6 +206,25 @@ impl Write for Limited<'_> {
     }
 }
 
+/// Formats `error` into `tail`, guarded and stopped past `max_render`;
+/// `false` when it was stopped. Out of line, so the unguarded `capture`
+/// keeps the small frame `{:#}` and `{:?}` need (D-063).
+#[inline(never)]
+fn capture_limited(
+    tail: &mut Tail,
+    error: &(dyn core::error::Error + 'static),
+) -> Result<bool, fmt::Error> {
+    let mut limited = Limited {
+        tail,
+        max: crate::limits::max_render(),
+    };
+    let written = write!(limited, "{}", Shown::guarded(&ErrorText(error)));
+    if limited.over() {
+        return Ok(false);
+    }
+    written.map(|()| true)
+}
+
 /// The text of one link, for the de-duplication check: borrowed when the
 /// error holds it as a string, otherwise in one of the two buffers.
 #[derive(Clone, Copy)]
@@ -260,17 +279,11 @@ impl Buffers {
         let tail = entry.get_or_insert_with(Tail::new);
         tail.len = 0;
         if self.guard {
-            let mut limited = Limited {
-                tail,
-                max: crate::limits::max_render(),
-            };
-            let written = write!(limited, "{}", Shown::guarded(&ErrorText(link.error)));
-            if limited.over() {
+            if !capture_limited(tail, link.error)? {
                 return Ok(Text::None);
             }
-            written?;
         } else {
-            write!(tail, "{}", ErrorText(link.error))?;
+            write!(tail, "{}", Shown::new(&ErrorText(link.error), false))?;
         }
         Ok(Text::Buf(slot))
     }
@@ -329,9 +342,7 @@ impl Display for Error {
     }
 }
 
-/// `{:#}`: every link on one line, joined by `": "`, repeats skipped. Not
-/// inlined, so `{}` keeps the small frame it needs.
-#[inline(never)]
+/// `{:#}`: every link on one line, joined by `": "`, repeats skipped.
 pub(crate) fn write_chain(error: &Error, f: &mut dyn Write, mode: Mode) -> fmt::Result {
     let mut buffers = Buffers::new(mode);
     let mut prev = Text::None;
