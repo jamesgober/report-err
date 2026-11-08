@@ -91,8 +91,10 @@ jobs:
           executables > head.txt
           (cd ../base && CARGO_TARGET_DIR="$RUNNER_TEMP/base-target" executables) > base.txt
           # report-err's own rows: its side of each comparison, and the
-          # groups only it has.
-          only='/report-err|^(boundary|codes|collect|hook)/'
+          # groups only it has. No leading `/`: Git Bash on Windows rewrites
+          # such an argument into a path before a program sees it.
+          only='report-err|^(boundary|codes|collect|hook)/'
+          export MSYS_NO_PATHCONV=1
           export CARGO_TARGET_DIR="$RUNNER_TEMP/alternate"
           for round in 1 2 3; do
             for side in base head; do
