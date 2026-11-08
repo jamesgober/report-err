@@ -123,22 +123,24 @@ const KEEP: usize = 256;
 struct Tail {
     buf: [u8; KEEP],
     len: usize,
-    /// `max_render`, read once when the buffer is made, not at every write.
-    max: usize,
 }
+
+/// `configure` refuses a `max_render` below 4 KiB, so a text that
+/// fits the buffer is never over it, and the limits are read only once the
+/// buffer has wrapped (D-063).
+const _: () = assert!(KEEP < 4096);
 
 impl Tail {
     fn new() -> Tail {
         Tail {
             buf: [0; KEEP],
             len: 0,
-            max: crate::limits::max_render(),
         }
     }
 
     /// Whether more was written than a whole report may hold.
     fn over(&self) -> bool {
-        self.len > self.max
+        self.len > KEEP && self.len > crate::limits::max_render()
     }
 
     /// The whole text, when it fit.
