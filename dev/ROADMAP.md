@@ -61,7 +61,7 @@ Exit: every `PLAN.md` 11.1 target measured; each met or its reason recorded and 
 
 ## v0.7.0 - Hardening
 Exit: no open finding; every threat has a passing attack test.
-- [ ] Fuzzing 24 hours per target (`ops`, `display_adversary`, `limits`) in WSL (D-057); a 60-second run of each in CI. The first run (from 2026-11-06 04:52 UTC) stopped early: each target hit its 30-second timeout on input the harness re-formats at every step, and a deletion of `/tmp` by other work ended the `limits` run (D-060). Restarted 2026-11-06 11:49 UTC with the D-059 fix, a 300-second timeout, and libFuzzer's temporary files in the home directory; that run also stopped early, on timeouts from a starved scheduler, not slow input (D-062), so all three run 24 hours again on the release code.
+- [ ] Fuzzing 24 hours per target (`ops`, `display_adversary`, `limits`) in WSL (D-057); a 60-second run of each in CI. The first run (from 2026-11-06 04:52 UTC) stopped early: each target hit its 30-second timeout on input the harness re-formats at every step, and a deletion of `/tmp` by other work ended the `limits` run (D-060). Restarted 2026-11-06 11:49 UTC with the D-059 fix, a 300-second timeout, and libFuzzer's temporary files in the home directory; that run also stopped early, on timeouts from a starved scheduler, not slow input (D-062), so all three run 24 hours again on the release code. The third run (from 2026-11-07 18:49 UTC) was interrupted after 66 minutes, with nothing found, when WSL was restarted; the fourth started 2026-11-08 06:40 UTC on the release code (93fb77e).
 - [x] Attack tests T1 to T16, each named in `docs/SECURITY.md`; T4's test found two hangs, fixed (D-055), and a third in the byte budget for section text (D-059); T6 extended to OSC, carriage return, C1, and a forged first line; T9 in a child process.
 - [x] `docs/SECURITY.md`.
 - [x] Soak: 8 hours on Windows and Linux, flat memory. The first run passed on Linux and failed on Windows at +1.75% resident memory in the plain half, the system heap settling over the first hour rather than a leak (D-061). Rerun from 2026-11-06 17:13 UTC on both, with live heap bytes counted exactly: passed on both (Windows 19.4 billion rounds, Linux 3.0 billion; live heap back within 7.7 KB of its start).
@@ -69,8 +69,12 @@ Exit: no open finding; every threat has a passing attack test.
 
 ## v0.8.0 - Alpha
 Exit: both migrations green; every surprise fixed or recorded in `docs/MIGRATING.md`.
-- [ ] kraken migrated for real on a branch James reviews; `kraken-lsp`'s unused anyhow dependency removed.
-- [ ] One more application migrated (a Hive DB tool or WASP boot code) using codes, `ExitReport`, and `report()`.
+- [ ] kraken migrated for real on a branch James reviews; `kraken-lsp`'s unused anyhow dependency removed. Rehearsed on 2026-11-08 against the 0.7 code: the find-and-replace pass alone, 2,803 tests passed and the same 4 native-linking tests failed as with anyhow.
+- [ ] One more application migrated (a Hive DB tool or WASP boot code) using codes, `ExitReport`, and `report()`: hive-system's `hive-admin`, rehearsed on 2026-11-08 (an `HADM` catalog, `run`, a reporter that logs; exit codes 64, 65, 70, 73 as designed).
+- [ ] The report prints a code's help (`Help:` under `Code:`) when its catalog entry is known; `docs/MIGRATING.md` says to call `configure_catalogs` for it. Found by the `hive-admin` rehearsal.
+- [ ] The `Code:` line names the severity (`warning`), not its number.
+- [ ] Ask define-err for a way to exit 74 (I/O) at normal severity: only `DataLoss` maps to 74 today. Found by the `hive-admin` rehearsal.
+- [ ] Decide whether `category` reads an `io::Error` source below a coded wrapper, not only an `io::Error` root.
 
 ## v0.9.0 - Beta and release candidates
 Exit: two weeks without an API change; every document checked against the build; James's review done; the pre-1.0 polish below complete.

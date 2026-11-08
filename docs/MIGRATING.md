@@ -61,7 +61,7 @@ s/\buse anyhow::/use report_err::/g
 s/\banyhow!(/err!(/g      (only in files that imported the macro by name)
 ```
 
-and in `Cargo.toml`, `anyhow = "..."` becomes `report-err = "0.4"`.
+and in `Cargo.toml`, `anyhow = "..."` becomes `report-err = "0.7"`.
 
 ### What behaves differently
 
