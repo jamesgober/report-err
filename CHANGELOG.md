@@ -30,6 +30,8 @@
   and the report's repeat check stops copying a link past `max_render`.
 - The same `Display` no longer hangs `note`, `warning`, `suggestion`, or a
   hook field: the byte budget's writer also fails once full.
+- The source archives GitHub makes for a release build: they now include
+  `tests/`, which `Cargo.toml` names.
 
 ---
 
