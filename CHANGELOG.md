@@ -11,6 +11,13 @@
 
 ## [Unreleased]
 
+---
+
+## [0.7.0] - 2026-11-09
+
+Hardening. `docs/SECURITY.md` has every threat and the test that proves its
+defence.
+
 ### Added
 
 - `docs/SECURITY.md`: every threat, its defence, its test, and its cost;
@@ -296,7 +303,8 @@ The scaffold and the plan. No functional code yet.
   cases, open decisions, and the decision log D-001 to D-008),
   `dev/DIRECTIVES.md`, and `dev/ROADMAP.md`.
 
-[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/jamesgober/report-err/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jamesgober/report-err/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/jamesgober/report-err/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/jamesgober/report-err/compare/v0.3.0...v0.4.0
