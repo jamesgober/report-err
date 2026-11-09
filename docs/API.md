@@ -87,7 +87,7 @@ Costs are estimates (marked [est.]) until they are measured; numbers marked [mea
 
 ```toml
 [dependencies]
-report-err = "0.6"
+report-err = "0.7"
 ```
 
 ### Features
@@ -103,7 +103,7 @@ The crate is `#![no_std]` and needs `alloc`: an `Error` lives on the heap. `defa
 
 ```toml
 [dependencies]
-report-err = { version = "0.6", default-features = false }
+report-err = { version = "0.7", default-features = false }
 ```
 
 MSRV is 1.81, the first release with `core::error::Error`.

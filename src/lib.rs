@@ -73,12 +73,14 @@
 //!
 //! ## Status
 //!
-//! `0.6.0` is feature complete and measured: the anyhow surface, codes,
-//! attachments, sections, the trail, exit codes, several causes, suppressed
-//! errors, budgets, the panic boundary, the creation hook, and reporting,
-//! benchmarked against anyhow, eyre, and error-stack on three platforms. The
-//! whole API is in `docs/API.md`, and the numbers in `docs/PERFORMANCE.md`,
-//! in the [repository](https://github.com/jamesgober/report-err).
+//! `0.7.0` is feature complete, measured, and hardened: the anyhow surface,
+//! codes, attachments, sections, the trail, exit codes, several causes,
+//! suppressed errors, budgets, the panic boundary, the creation hook, and
+//! reporting, benchmarked against anyhow, eyre, and error-stack on three
+//! platforms, with an attack test for every threat, fuzzing, and soak runs.
+//! The whole API is in `docs/API.md`, the numbers in `docs/PERFORMANCE.md`,
+//! and the threats in `docs/SECURITY.md`, in the
+//! [repository](https://github.com/jamesgober/report-err).
 
 #![doc(html_root_url = "https://docs.rs/report-err")]
 #![cfg_attr(docsrs, feature(doc_cfg))]

@@ -149,6 +149,49 @@ jobs:
         env:
           RUSTFLAGS: "-C panic=abort"
 
+  fuzz:
+    name: Fuzz (60 s per target)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # cargo-fuzz is built with stable: its locked rustix 0.36 turns on
+      # `rustc_` attributes when it sees a nightly compiler, which current
+      # nightly rejects. Formatting is checked with stable too, as for the
+      # crate: nightly rustfmt applies `rustfmt.toml`'s unstable options.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            fuzz
+            soak
+      - name: Install cargo-fuzz
+        run: cargo +stable install cargo-fuzz --locked --version 0.13.1
+      - name: Format and Clippy (fuzz and soak)
+        run: |
+          cargo +stable fmt --manifest-path fuzz/Cargo.toml -- --check
+          cargo +stable fmt --manifest-path soak/Cargo.toml -- --check
+          cargo clippy --manifest-path fuzz/Cargo.toml --bins -- -D warnings
+          cargo clippy --manifest-path soak/Cargo.toml -- -D warnings
+      # cargo-fuzz builds with AddressSanitizer by default. The 24-hour runs
+      # of each release happen outside CI (docs/SECURITY.md); this catches a
+      # target that no longer builds or fails at once.
+      - name: Run each target
+        run: |
+          for target in ops display_adversary; do
+            cargo fuzz run --fuzz-dir fuzz "$target" -- -max_total_time=60 -rss_limit_mb=4096
+          done
+          cargo fuzz run --fuzz-dir fuzz limits -- -max_total_time=60 -rss_limit_mb=4096 -fork=2
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts
+
   benches:
     name: Benchmarks (build)
     runs-on: ubuntu-latest

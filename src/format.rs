@@ -181,6 +181,50 @@ impl Write for Tail {
     }
 }
 
+/// A `Tail` that fails every write once more than `max` bytes were written
+/// to it, for guarded output only (D-063). A link longer than a whole report
+/// is not compared, and a `Display` that writes until its writer fails stops
+/// here (T4). Unguarded `{:#}` and `{:?}` write to the `Tail` directly, as
+/// they write any `Display` without a guard.
+struct Limited<'a> {
+    tail: &'a mut Tail,
+    max: usize,
+}
+
+impl Limited<'_> {
+    fn over(&self) -> bool {
+        self.tail.len > self.max
+    }
+}
+
+impl Write for Limited<'_> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        if self.over() {
+            return Err(fmt::Error);
+        }
+        self.tail.write_str(s)
+    }
+}
+
+/// Formats `error` into `tail`, guarded and stopped past `max_render`;
+/// `false` when it was stopped. Out of line, so the unguarded `capture`
+/// keeps the small frame `{:#}` and `{:?}` need (D-063).
+#[inline(never)]
+fn capture_limited(
+    tail: &mut Tail,
+    error: &(dyn core::error::Error + 'static),
+) -> Result<bool, fmt::Error> {
+    let mut limited = Limited {
+        tail,
+        max: crate::limits::max_render(),
+    };
+    let written = write!(limited, "{}", Shown::guarded(&ErrorText(error)));
+    if limited.over() {
+        return Ok(false);
+    }
+    written.map(|()| true)
+}
+
 /// The text of one link, for the de-duplication check: borrowed when the
 /// error holds it as a string, otherwise in one of the two buffers.
 #[derive(Clone, Copy)]
@@ -234,7 +278,13 @@ impl Buffers {
         };
         let tail = entry.get_or_insert_with(Tail::new);
         tail.len = 0;
-        write!(tail, "{}", Shown::new(&ErrorText(link.error), self.guard))?;
+        if self.guard {
+            if !capture_limited(tail, link.error)? {
+                return Ok(Text::None);
+            }
+        } else {
+            write!(tail, "{}", Shown::new(&ErrorText(link.error), false))?;
+        }
         Ok(Text::Buf(slot))
     }
 
@@ -637,7 +687,9 @@ impl Error {
     }
 }
 
-/// Writes to a `fmt::Write` and stops quietly at `max_render` bytes.
+/// Writes to a `fmt::Write` and stops at `max_render` bytes. Once full,
+/// every write fails, so a `Display` that writes until its writer fails
+/// stops too (T4); `render` then adds the truncation line.
 struct Capped<'a> {
     inner: &'a mut dyn Write,
     written: usize,
@@ -647,7 +699,7 @@ struct Capped<'a> {
 impl Write for Capped<'_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         if self.full {
-            return Ok(());
+            return Err(fmt::Error);
         }
         let room = crate::limits::max_render().saturating_sub(self.written);
         let mut take = s.len().min(room);
@@ -659,6 +711,7 @@ impl Write for Capped<'_> {
         self.written += part.len();
         if take < s.len() {
             self.full = true;
+            return Err(fmt::Error);
         }
         Ok(())
     }

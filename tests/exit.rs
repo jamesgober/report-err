@@ -33,7 +33,10 @@ fn case(name: &str) -> report_err::Result<()> {
         "coded" => Err(Error::new(DbError::Timeout)),
         "zero" => Err(err!("x").with_exit_code(0)),
         "max" => Err(err!("x").with_exit_code(255)),
-        "escape" => Err(err!("a\u{1b}[31mb\u{202e}c\n\nLocation: forged")),
+        "escape" => Err(err!(
+            "a\u{1b}[31mb\u{202e}c\n\nLocation: forged\u{1b}]0;title\u{7}\rd\u{9b}2J"
+        )
+        .context("e\nError: fake")),
         "huge" => Err(err!("{}", "x".repeat(2 * 1024 * 1024)).with_exit_code(9)),
         other => Err(err!("unknown case {other}")),
     }
@@ -109,6 +112,17 @@ fn controls_and_bidi_are_escaped_and_blocks_cannot_be_forged() {
     assert!(text.contains("\\u{1b}[31m"), "{text:?}");
     assert!(text.contains("\\u{202e}"), "{text:?}");
     assert!(!text.contains("\nLocation: forged"), "{text:?}");
+    // T6: an OSC title sequence, a carriage return, a C1 control, and a
+    // forged first line.
+    for raw in ['\u{7}', '\r', '\u{9b}'] {
+        assert!(!text.contains(raw), "{raw:?} in {text:?}");
+    }
+    assert!(
+        text.contains("\\u{1b}]0;title\\u{7}\\u{d}d\\u{9b}2J"),
+        "{text:?}"
+    );
+    assert!(!text.contains("\nError: fake"), "{text:?}");
+    assert!(text.starts_with("Error: e\n    Error: fake\n"), "{text:?}");
 }
 
 fn converted_error_keeps_the_location_of_the_into() {

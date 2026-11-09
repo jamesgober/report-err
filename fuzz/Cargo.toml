@@ -1,0 +1,39 @@
+# Fuzz targets for report-err (PLAN 12.6). Not published and not part of the
+# crate's build: a separate package, run with cargo-fuzz on nightly.
+# Run: cargo +nightly fuzz run ops --fuzz-dir fuzz
+[package]
+name = "report-err-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+report-err = { path = ".." }
+define-err = "0.5"
+
+[[bin]]
+name = "ops"
+path = "fuzz_targets/ops.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "display_adversary"
+path = "fuzz_targets/display_adversary.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "limits"
+path = "fuzz_targets/limits.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

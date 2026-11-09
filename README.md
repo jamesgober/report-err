@@ -29,7 +29,7 @@
         <strong>MSRV is 1.81+</strong> (Rust 2021 edition). <code>no_std</code> + <code>alloc</code>; <code>std</code> on by default.
     </p>
     <blockquote>
-        <strong>Status: <code>0.6.0</code>, feature complete and measured.</strong> The anyhow surface; error codes, severity, categories, and kinds from define-err; notes, attachments, a propagation trail, and backtraces; <code>ExitReport</code>; several causes and <code>collect_all()</code>; suppressed errors and cleanup; budgets on everything that grows; the panic boundary; the creation hook; and reporting through define-err's facade. <code>0.6</code> measured it against anyhow, eyre, error-stack, and <code>Box&lt;dyn Error&gt;</code> on three platforms (<a href="./docs/PERFORMANCE.md"><code>docs/PERFORMANCE.md</code></a>); next comes hardening (<code>0.7</code>). The whole API is in <a href="./docs/API.md"><code>docs/API.md</code></a>.
+        <strong>Status: <code>0.7.0</code>, feature complete, measured, and hardened.</strong> The anyhow surface; error codes, severity, categories, and kinds from define-err; notes, attachments, a propagation trail, and backtraces; <code>ExitReport</code>; several causes and <code>collect_all()</code>; suppressed errors and cleanup; budgets on everything that grows; the panic boundary; the creation hook; and reporting through define-err's facade. <code>0.6</code> measured it against anyhow, eyre, error-stack, and <code>Box&lt;dyn Error&gt;</code> on three platforms (<a href="./docs/PERFORMANCE.md"><code>docs/PERFORMANCE.md</code></a>); <code>0.7</code> hardened it with attack tests for every threat, a day of fuzzing per target, and 8-hour soaks (<a href="./docs/SECURITY.md"><code>docs/SECURITY.md</code></a>); next comes the alpha, with kraken migrated (<code>0.8</code>). The whole API is in <a href="./docs/API.md"><code>docs/API.md</code></a>.
     </blockquote>
 </div>
 
@@ -40,7 +40,7 @@
 
 ```toml
 [dependencies]
-report-err = "0.6.0"
+report-err = "0.7.0"
 ```
 
 ## Quick start
@@ -138,7 +138,7 @@ Location: src/users.rs:6:9
 
 | anyhow | report-err |
 |---|---|
-| `anyhow = "1"` | `report-err = "0.6.0"` |
+| `anyhow = "1"` | `report-err = "0.7.0"` |
 | `use anyhow::{Context, Result};` | `use report_err::{Context, Result};` |
 | `anyhow::Error`, `bail!`, `ensure!`, `format_err!`, `.context`, `.chain()`, `.downcast_ref` | same names |
 | `anyhow!(...)` | `err!(...)` |
@@ -194,6 +194,7 @@ let page = boundary(|| plugin.render(&page)).context("plugin `gallery` failed")?
 - [`docs/PLATFORM-NOTES.md`](./docs/PLATFORM-NOTES.md): `no_std`, `panic = "abort"`, backtraces, and targets.
 - [`docs/UNSAFE.md`](./docs/UNSAFE.md): the one-word representation, its `unsafe` core, and how Miri checks it.
 - [`docs/PERFORMANCE.md`](./docs/PERFORMANCE.md): measured against anyhow, eyre, error-stack, and `Box<dyn Error>` on three platforms.
+- [`docs/SECURITY.md`](./docs/SECURITY.md): the threats, their defences and tests, the budgets, and how to report a vulnerability.
 - [`dev/PLAN.md`](./dev/PLAN.md): the design, the threats and their tests, performance, and the decision log.
 
 <hr>

@@ -13,6 +13,41 @@
 
 ---
 
+## [0.7.0] - 2026-11-09
+
+Hardening. `docs/SECURITY.md` has every threat and the test that proves its
+defence.
+
+### Added
+
+- `docs/SECURITY.md`: every threat, its defence, its test, and its cost;
+  the budgets; how to report a vulnerability.
+- Attack tests for the threats not tested where their code lives
+  (`tests/attack.rs`), and an allocation-failure test in a child process
+  (`tests/oom.rs`).
+- Fuzz targets `ops`, `display_adversary`, and `limits` (`fuzz/`), run for
+  60 seconds each in CI.
+- The soak run (`soak/`): hours of 64 threads doing every operation, with
+  live heap bytes and resident memory sampled every minute.
+
+### Fixed
+
+- A `Display` that writes until its writer fails no longer hangs `render`,
+  `ExitReport`, or the report: both output caps fail every write once full,
+  and the report's repeat check stops copying a link past `max_render`.
+- The same `Display` no longer hangs `note`, `warning`, `suggestion`, or a
+  hook field: the byte budget's writer also fails once full.
+- The source archives GitHub makes for a release build: they now include
+  `tests/`, which `Cargo.toml` names.
+
+### Changed
+
+- The benchmark gate on pull requests measures the base branch and the
+  change in turn three times and fails only on a slowdown of more than 5% in
+  all three rounds.
+
+---
+
 ## [0.6.0] - 2026-11-06
 
 Optimisation. Measured against anyhow, eyre, error-stack, and
@@ -268,7 +303,8 @@ The scaffold and the plan. No functional code yet.
   cases, open decisions, and the decision log D-001 to D-008),
   `dev/DIRECTIVES.md`, and `dev/ROADMAP.md`.
 
-[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/jamesgober/report-err/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jamesgober/report-err/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/jamesgober/report-err/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/jamesgober/report-err/compare/v0.3.0...v0.4.0
