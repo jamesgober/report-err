@@ -140,7 +140,7 @@ pub fn run(input: &mut Input<'_>, limits: &Limits) {
                 Some(severity) => error.with_severity(severity),
                 None => error,
             },
-            12 => error.with_kind(define_err::Kinds::from_bits(u64::from(input.u32()))),
+            12 => error.with_kinds(define_err::Kinds::from_bits(u64::from(input.u32()))),
             13 => error.with_exit_code(input.byte()),
             14 => {
                 let n = usize::from(input.byte() % 8);
@@ -177,7 +177,8 @@ pub fn run(input: &mut Input<'_>, limits: &Limits) {
             19 => {
                 // Round trip through the standard boxed form.
                 let before = format!("{error:#}");
-                let back = Error::from_boxed(error.into_std());
+                let boxed: Box<dyn std::error::Error + Send + Sync> = error.into();
+                let back = Error::from_boxed(boxed);
                 assert_eq!(format!("{back:#}"), before);
                 root = Root::Unknown;
                 back
@@ -192,7 +193,10 @@ pub fn run(input: &mut Input<'_>, limits: &Limits) {
             }
             22 => {
                 let _ = error.find::<Leaf>();
-                let _ = error.find_in_suppressed::<io::Error>();
+                let _ = error
+                    .suppressed()
+                    .iter()
+                    .find_map(|e| e.find::<io::Error>());
                 error
             }
             _ => {

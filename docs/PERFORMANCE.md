@@ -62,7 +62,7 @@ From the `Benchmarks` run of 2026-11-05 on pull request 5: Linux x86_64 on an In
 | B18 | 64 threads creating and dropping, system allocator | 1.09 / 0.95 / 1.01 | within 5% | met on Windows and aarch64; **missed on Linux x86_64** (9% slower) |
 | B18 | the same with mimalloc | 0.92 / - / 1.13 | within 5% | met on x86_64; **missed on aarch64** (13% slower) |
 
-Every missed row is on the 0.9.x polish list in `dev/ROADMAP.md`, to be fixed, or measured again and listed with its reason, before 1.0.
+Every missed row is on the pre-1.0 polish list in `dev/ROADMAP.md`, to be fixed, or measured again and listed with its reason, before 1.0.
 
 ### Against eyre, error-stack, and `Box<dyn Error>`
 

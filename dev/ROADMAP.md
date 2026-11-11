@@ -56,10 +56,10 @@ Exit: every `PLAN.md` 11.1 target measured; each met or its reason recorded and 
 - [x] Benchmarks B1 to B18 against anyhow, eyre, error-stack, and `Box<dyn Error>` on Windows, Linux, and aarch64, in CI (D-051; Apple silicon replaced by GitHub's Linux aarch64 runner).
 - [x] RD-14 decided with numbers: not adopted (D-053); the success path re-measured on aarch64: level (1.03).
 - [x] `docs/PERFORMANCE.md`; ratios stored in `benches/baseline.json`; the 5% gate active, against the base branch on the same runner (D-056).
-- [x] From 0.4.0 (D-038): B9 fixed (0.58 to 0.72 times anyhow, D-052); B6 met on x86_64 and missed on aarch64; B12 and B13 measured, missed, and listed for 0.9.x below with their reasons.
+- [x] From 0.4.0 (D-038): B9 fixed (0.58 to 0.72 times anyhow, D-052); B6 met on x86_64 and missed on aarch64; B12 and B13 measured, missed, and listed for the pre-1.0 polish below with their reasons.
 - [x] 10.3's 0.6 idea: heap bytes of buffer attachments count against `max_bytes` (D-054).
 
-## v0.7.0 - Hardening
+## v0.7.0 - Hardening (DONE, 2026-11-09)
 Exit: no open finding; every threat has a passing attack test.
 - [x] Fuzzing 24 hours per target (`ops`, `display_adversary`, `limits`) in WSL (D-057); a 60-second run of each in CI. The first run (from 2026-11-06 04:52 UTC) stopped early: each target hit its 30-second timeout on input the harness re-formats at every step, and a deletion of `/tmp` by other work ended the `limits` run (D-060). Restarted 2026-11-06 11:49 UTC with the D-059 fix, a 300-second timeout, and libFuzzer's temporary files in the home directory; that run also stopped early, on timeouts from a starved scheduler, not slow input (D-062), so all three run 24 hours again on the release code. The third run (from 2026-11-07 18:49 UTC) was interrupted after 66 minutes, with nothing found, when WSL was restarted; the fourth (from 2026-11-08 06:40 UTC) and fifth (from 07:47 UTC) were stopped, with nothing found, when the benchmark fix changed the format code again (D-063); the sixth started 2026-11-08 10:18 UTC on the final code (233122d; nothing in `src/` changed after it). The sixth found nothing: `display_adversary` ran 24 hours (1.5 million runs) and `limits` 24 hours (5.7 million runs); `ops` stopped at 22 hours 11 minutes on a spurious timeout when the WSL clock stepped back, and ran its remaining time from its corpus on 2026-11-09 from 10:30 UTC, 24 hours 12 minutes in all (182 thousand runs; each `ops` run re-renders the error at every step) (D-066).
 - [x] Attack tests T1 to T16, each named in `docs/SECURITY.md`; T4's test found two hangs, fixed (D-055), and a third in the byte budget for section text (D-059); T6 extended to OSC, carriage return, C1, and a forged first line; T9 in a child process.
@@ -67,7 +67,14 @@ Exit: no open finding; every threat has a passing attack test.
 - [x] Soak: 8 hours on Windows and Linux, flat memory. The first run passed on Linux and failed on Windows at +1.75% resident memory in the plain half, the system heap settling over the first hour rather than a leak (D-061). Rerun from 2026-11-06 17:13 UTC on both, with live heap bytes counted exactly: passed on both (Windows 19.4 billion rounds, Linux 3.0 billion; live heap back within 7.7 KB of its start).
 - [x] The 64 KiB stack test: build, render, search, record, and drop a full tree (`test_attack_t11_full_tree_on_a_64_kib_stack`; 10.3's 0.7 idea).
 
-## v0.8.0 - Alpha
+## v0.8.0 - Simpler API
+Exit: every finding of `dev/SIMPLICITY-AUDIT.md` fixed or kept with its reason; `docs/API.md` covers every public item with compiled examples; the migration note written.
+- [x] Simplicity audit of the 0.7 API (James, 2026-11-11): two renames, six removals, the anyhow names kept (D-067).
+- [x] `docs/API.md` rewritten as a task-by-task reference, compiled as doc tests (D-068).
+- [x] define-err 0.9 (D-069).
+- [x] `docs/MIGRATING.md`: "From report-err 0.7 to 0.8".
+
+## v0.9.0 - Alpha
 Exit: both migrations green; every surprise fixed or recorded in `docs/MIGRATING.md`.
 - [ ] kraken migrated for real on a branch James reviews; `kraken-lsp`'s unused anyhow dependency removed. Rehearsed on 2026-11-08 against the 0.7 code: the find-and-replace pass alone, 2,803 tests passed and the same 4 native-linking tests failed as with anyhow.
 - [ ] One more application migrated (a Hive DB tool or WASP boot code) using codes, `ExitReport`, and `report()`: hive-system's `hive-admin`, rehearsed on 2026-11-08 (an `HADM` catalog, `run`, a reporter that logs; exit codes 64, 65, 70, 73 as designed).
@@ -76,13 +83,13 @@ Exit: both migrations green; every surprise fixed or recorded in `docs/MIGRATING
 - [ ] Ask define-err for a way to exit 74 (I/O) at normal severity: only `DataLoss` maps to 74 today. Found by the `hive-admin` rehearsal.
 - [ ] Decide whether `category` reads an `io::Error` source below a coded wrapper, not only an `io::Error` root.
 
-## v0.9.0 - Beta and release candidates
+## v0.10.0 - Beta and release candidates
 Exit: two weeks without an API change; every document checked against the build; James's review done; the pre-1.0 polish below complete.
 - [ ] **James's pre-1.0 review** of the API and anything he wants added before 1.0.
 - [ ] API frozen; `docs/STABILITY-1.0.md` drafted with the requirement-to-test map.
 
-## v0.9.x - Pre-1.0 polish (before any `1.0.0-rc`)
-James's standing rule (2026-10-29): "make sure to go back and fix any issues / perf tune / etc before we get close to release." Nothing accepted earlier in the series becomes final silently. This milestone runs inside 0.9.x and must be complete before the first `1.0.0-rc`; whatever is still open afterwards goes, with its reason and numbers, into the 1.0 readiness note for James (`docs/STABILITY-1.0.md`, section "Open items").
+## v0.10.x - Pre-1.0 polish (before any `1.0.0-rc`)
+James's standing rule (2026-10-29): "make sure to go back and fix any issues / perf tune / etc before we get close to release." Nothing accepted earlier in the series becomes final silently. This milestone runs inside 0.10.x and must be complete before the first `1.0.0-rc`; whatever is still open afterwards goes, with its reason and numbers, into the 1.0 readiness note for James (`docs/STABILITY-1.0.md`, section "Open items").
 Exit: every item below is fixed, or measured again and listed in the readiness note with its reason; the performance pass and the security and `unsafe` review are recorded with dates, hardware, and results.
 - [ ] **Revisit every accepted gap, deferred item, known issue, and missed target.** The list as of 2026-10-29 (add to it as the series goes; `PLAN.md` decision log is the source):
   - D-022: `{:#}` was 2.0 times slower than anyhow at 0.3 (the de-duplication buffer). Target: at least level with anyhow.

@@ -231,10 +231,10 @@ fn test_severity_falls_to_the_category_default() {
 
 #[test]
 fn test_kinds_combine_code_and_added() {
-    let error = Error::new(DbError::Timeout).with_kind(Kinds::SECURITY);
+    let error = Error::new(DbError::Timeout).with_kinds(Kinds::SECURITY);
     assert!(error.kinds().contains(Kinds::SECURITY));
     assert!(error.kinds().contains(Kinds::AUDIT));
-    let added = err!("x").with_kind(Kinds::USER).with_kind(Kinds::AUDIT);
+    let added = err!("x").with_kinds(Kinds::USER).with_kinds(Kinds::AUDIT);
     assert_eq!(added.kinds(), Kinds::USER | Kinds::AUDIT);
 }
 

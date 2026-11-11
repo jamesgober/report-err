@@ -13,7 +13,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 report-err = { path = ".." }
-define-err = "0.5"
+define-err = "0.9"
 
 [[bin]]
 name = "ops"

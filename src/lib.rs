@@ -73,11 +73,12 @@
 //!
 //! ## Status
 //!
-//! `0.7.0` is feature complete, measured, and hardened: the anyhow surface,
+//! `0.8.0` is feature complete, measured, hardened, and simplified: the anyhow surface,
 //! codes, attachments, sections, the trail, exit codes, several causes,
 //! suppressed errors, budgets, the panic boundary, the creation hook, and
 //! reporting, benchmarked against anyhow, eyre, and error-stack on three
-//! platforms, with an attack test for every threat, fuzzing, and soak runs.
+//! platforms, with an attack test for every threat, fuzzing, and soak runs;
+//! `0.8.0` removed the methods that only repeated others.
 //! The whole API is in `docs/API.md`, the numbers in `docs/PERFORMANCE.md`,
 //! and the threats in `docs/SECURITY.md`, in the
 //! [repository](https://github.com/jamesgober/report-err).
@@ -157,7 +158,7 @@ pub use crate::exit::ExitReport;
 pub use crate::ext::SectionKind;
 pub use crate::format::RenderStyle;
 pub use crate::group::{CollectAll, Errors, FindAll};
-pub use crate::hook::unraisable;
+pub use crate::hook::report_unhandled;
 pub use crate::limits::{configure, configure_catalogs, limits, ConfigureError, Limits};
 pub use crate::panic::PANICS_CAUGHT;
 #[cfg(feature = "std")]
@@ -293,6 +294,12 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// ```
 #[cfg(doctest)]
 pub struct CompileFail;
+
+/// Every example in `docs/API.md`, compiled and run by `cargo test` with the
+/// features they need (D-068).
+#[cfg(all(doctest, feature = "std", feature = "testing"))]
+#[doc = include_str!("../docs/API.md")]
+pub struct ApiReference;
 
 #[cfg(test)]
 mod tests {

@@ -53,9 +53,9 @@ fn child(name: &str) -> ExitReport {
         "run_ok" => report_err::run(|| Ok(())),
         "run_err" => report_err::run(|| Err(err!("failed in app"))),
         "run_panic" => report_err::run(|| panic!("app panicked")),
-        "unraisable" => {
+        "report_unhandled" => {
             let delivered =
-                report_err::unraisable(err!("lost\u{1b}[2J in drop").context("flushing"));
+                report_err::report_unhandled(err!("lost\u{1b}[2J in drop").context("flushing"));
             println!("delivered={delivered}");
             Ok::<(), Error>(()).into()
         }
@@ -191,9 +191,9 @@ fn run_exits_as_its_app_does() {
     assert!(text.contains("Error: app panicked\n"), "{text}");
 }
 
-fn unraisable_without_a_reporter_writes_one_line() {
+fn report_unhandled_without_a_reporter_writes_one_line() {
     // E-92
-    let output = run("unraisable");
+    let output = run("report_unhandled");
     assert_eq!(output.status.code(), Some(0));
     assert_eq!(
         String::from_utf8(output.stdout).unwrap(),
@@ -202,10 +202,10 @@ fn unraisable_without_a_reporter_writes_one_line() {
     let text = String::from_utf8(output.stderr).unwrap();
     assert_eq!(
         text,
-        "Error (unraisable): flushing: lost\\u{1b}[2J in drop\n"
+        "Error (unhandled): flushing: lost\\u{1b}[2J in drop\n"
     );
     // Standard error closed: no panic.
-    let closed = command("unraisable")
+    let closed = command("report_unhandled")
         .stderr(Stdio::null())
         .output()
         .unwrap();
@@ -222,8 +222,8 @@ fn main() -> ExitReport {
         let checks: [(&str, fn()); 11] = [
             ("run_exits_as_its_app_does", run_exits_as_its_app_does),
             (
-                "unraisable_without_a_reporter_writes_one_line",
-                unraisable_without_a_reporter_writes_one_line,
+                "report_unhandled_without_a_reporter_writes_one_line",
+                report_unhandled_without_a_reporter_writes_one_line,
             ),
             ("exit_status_for_each_case", exit_status_for_each_case),
             ("ok_prints_nothing", ok_prints_nothing),

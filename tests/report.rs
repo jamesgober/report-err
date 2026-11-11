@@ -179,8 +179,10 @@ fn report_and_records(error: &Error) {
     assert_eq!(wins, 1);
     assert_eq!(records().len(), 1);
 
-    // E-92: `unraisable` with a reporter: delivered as unhandled.
-    assert!(report_err::unraisable(err!("lost in a drop").context(Loud)));
+    // E-92: `report_unhandled` with a reporter: delivered as unhandled.
+    assert!(report_err::report_unhandled(
+        err!("lost in a drop").context(Loud)
+    ));
     let delivered = records();
     assert_eq!(delivered.len(), 1);
     assert!(!delivered[0].handled);

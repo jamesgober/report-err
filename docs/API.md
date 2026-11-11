@@ -9,151 +9,130 @@
         <span>&nbsp;│&nbsp;</span>
         <span>API</span>
         <span>&nbsp;│&nbsp;</span>
-        <a href="./UNSAFE.md" title="The unsafe core"><b>UNSAFE</b></a>
+        <a href="./MIGRATING.md" title="Migrating"><b>MIGRATING</b></a>
         <span>&nbsp;│&nbsp;</span>
-        <a href="../dev/PLAN.md" title="Plan"><b>PLAN</b></a>
+        <a href="./SECURITY.md" title="Security"><b>SECURITY</b></a>
+        <span>&nbsp;│&nbsp;</span>
+        <a href="./PERFORMANCE.md" title="Performance"><b>PERFORMANCE</b></a>
     </sup>
 </div>
 <br>
 
-The complete public API of report-err 1.0, written at the `0.2.0` design lock. Every item carries the version it arrives in (**Since**) and its item id from [`../dev/PLAN.md`](../dev/PLAN.md) section 8; the published crate exposes only what is implemented, so an item marked `0.4` does not exist in `0.3`. Signatures here are the contract: a change after `0.2.0` is recorded in the decision log of the plan. Types from define-err (`Code`, `Severity`, `Category`, `Kinds`, `ErrorInfo`, `CodeInfo`, `ErrorRecord`) are the ones its own `docs/API.md` locks.
-
-Costs are estimates (marked [est.]) until they are measured; numbers marked [measured] come from the 0.3.0 benchmarks against anyhow 1.0.104 (criterion; PLAN 11.4) or from the counting-allocator tests (`tests/alloc.rs`). The full comparison with eyre and error-stack, on Linux and aarch64 too, is in `0.6.0`.
-
-<sub>Copyright &copy; 2026 <strong>James Gober</strong>.</sub>
-
-## Table of contents
+A task-by-task tour of the 0.8 API, covering every public item. The rustdoc on
+[docs.rs](https://docs.rs/report-err) has the same items with more examples;
+every example here is compiled and run as a doc test with all features enabled.
 
 - [Setup](#setup)
-  - [Features](#features)
-  - [`no_std`](#no_std)
+  - [Features and `no_std`](#features-and-no_std)
   - [The prelude](#the-prelude)
-- [Conventions](#conventions)
-  - [Tiers](#tiers)
-  - [Names you already know](#names-you-already-know)
-  - [No panics, and the one error this crate returns](#no-panics-and-the-one-error-this-crate-returns)
-  - [Threads](#threads)
-  - [What can never be observed](#what-can-never-be-observed)
 - [Tier 1 on one screen](#tier-1-on-one-screen)
-- [`Error`](#error)
-  - [Creating an `Error`](#creating-an-error)
-  - [`context`](#context)
-  - [`Deref` to `dyn Error`: the `source()` chain](#deref-to-dyn-error-the-source-chain)
+- [Creating an error](#creating-an-error)
+  - [`err!` and `format_err!`](#err-and-format_err)
+  - [`bail!` and `ensure!`](#bail-and-ensure)
+  - [`Error::new`, `Error::msg`, and `?`](#errornew-errormsg-and-)
+  - [`Result` and `Ok`](#result-and-ok)
+- [Adding context](#adding-context)
+  - [`Context` on `Result` and `Option`](#context-on-result-and-option)
+  - [`Error::context`](#errorcontext)
+- [Notes, warnings, and suggestions](#notes-warnings-and-suggestions)
+- [Attachments](#attachments)
+- [Codes, severity, category, and kinds](#codes-severity-category-and-kinds)
+  - [Codes](#codes)
+  - [Severity, category, and kinds](#severity-category-and-kinds)
+  - [Public messages and `ErrorInfo`](#public-messages-and-errorinfo)
+  - [Catalogs](#catalogs)
+- [Reading an error](#reading-an-error)
+  - [The `source()` chain](#the-source-chain)
   - [Downcasting](#downcasting)
+  - [Searching a tree](#searching-a-tree)
   - [Location](#location)
-  - [Codes, severity, category, kinds](#codes-severity-category-kinds)
-  - [Formatting](#formatting)
-- [`Result` and `Ok`](#result-and-ok)
-- [`Context` on `Result` and `Option`](#context-on-result-and-option)
-- [Macros: `err!`, `bail!`, `ensure!`](#macros-err-bail-ensure)
-- [Chain tools](#chain-tools)
-  - [`chain` and `Chain`](#chain-and-chain)
-  - [`root_cause`](#root_cause)
-  - [`find`, `find_all`, `find_in_suppressed`](#find-find_all-find_in_suppressed)
-- [Attachments and sections](#attachments-and-sections)
-  - [`attach`, `attachment`, `attachments`, `attach_display`](#attach-attachment-attachments-attach_display)
-  - [`note`, `warning`, `suggestion`](#note-warning-suggestion)
-  - [`sections`, `Section`, `SectionKind`](#sections-section-sectionkind)
+- [Printing an error](#printing-an-error)
+  - [`{}`, `{:#}`, and `{:?}`](#--and-)
+  - [`render` and `RenderStyle`](#render-and-renderstyle)
 - [Several causes](#several-causes)
-  - [`group`, `children`, `push_child`](#group-children-push_child)
-  - [`split` and `flatten`](#split-and-flatten)
+  - [`Error::group` and `children`](#errorgroup-and-children)
   - [`Errors`](#errors)
-  - [`CollectAll`](#collectall)
+  - [`collect_all`](#collect_all)
+  - [`split` and `flatten`](#split-and-flatten)
 - [Suppressed errors and cleanup](#suppressed-errors-and-cleanup)
-- [Trace and backtrace](#trace-and-backtrace)
-- [Configuration](#configuration)
-  - [`Limits`](#limits)
-  - [`configure` and `limits`](#configure-and-limits)
-  - [`configure_catalogs`](#configure_catalogs)
-  - [`ConfigureError`](#configureerror)
-- [`main`](#main)
+- [The trail and backtraces](#the-trail-and-backtraces)
+- [`main` and exit codes](#main-and-exit-codes)
   - [`fn main() -> Result<()>`](#fn-main---result)
   - [`ExitReport`](#exitreport)
-  - [`exit_code` and `with_exit_code`](#exit_code-and-with_exit_code)
   - [`run`](#run)
-- [Panic boundary](#panic-boundary)
+  - [Exit codes](#exit-codes)
+- [Panics](#panics)
 - [Reporting](#reporting)
   - [`report` and `is_reported`](#report-and-is_reported)
   - [`record`](#record)
-  - [`info`](#info)
+  - [`report_unhandled`](#report_unhandled)
   - [The creation hook](#the-creation-hook)
+- [Limits](#limits)
 - [Standard-library interop](#standard-library-interop)
-- [`render` and `RenderStyle`](#render-and-renderstyle)
-- [`testing`](#testing)
+- [Testing helpers](#testing-helpers)
 - [Crate root](#crate-root)
-- [Item index](#item-index)
+- [What can fail](#what-can-fail)
+- [Examples in the repository](#examples-in-the-repository)
 
 ## Setup
 
 ```toml
 [dependencies]
-report-err = "0.7"
+report-err = "0.8"
 ```
 
-### Features
+### Features and `no_std`
 
-| Feature | Default | Brings |
+| Feature | Default | Adds |
 |---|---|---|
-| `std` | yes | backtraces, `ExitReport` and exit codes, `run`, `boundary`, panic isolation in guarded rendering and around the creation hook, the standard-error fallback of `unraisable` |
-| `testing` | no | assertions for tests ([`testing`](#testing)) |
+| `std` | yes | backtraces, `ExitReport`, `run`, `boundary`, the `io::Error` category, panic isolation of the creation hook |
+| `testing` | no | the [`testing`](#testing-helpers) assertions |
 
-### `no_std`
-
-The crate is `#![no_std]` and needs `alloc`: an `Error` lives on the heap. `default-features = false` keeps everything except the items marked **std** below. CI builds `thumbv7em-none-eabihf`. Targets without pointer-sized atomic compare-and-swap (`thumbv6m-none-eabi`) are refused at build time with a message.
+With `default-features = false` the crate is `no_std` with `alloc`, on any
+target with pointer-sized atomics:
 
 ```toml
-[dependencies]
-report-err = { version = "0.7", default-features = false }
+report-err = { version = "0.8", default-features = false }
 ```
-
-MSRV is 1.81, the first release with `core::error::Error`.
 
 ### The prelude
 
+`use report_err::prelude::*;` brings in `bail!`, `ensure!`, `err!`,
+`CollectAll`, `Context`, `Error`, and `Result`: everything Tier 1 needs.
+
 ```rust
 use report_err::prelude::*;
+
+fn parse(text: &str) -> Result<u16> {
+    ensure!(!text.is_empty(), "the port is empty");
+    text.parse().context("the port is not a number")
+}
+
+assert_eq!(parse("8080").unwrap(), 8080);
+assert_eq!(parse("").unwrap_err().to_string(), "the port is empty");
 ```
-
-brings `Error`, `Result`, `Context`, `CollectAll`, `err!`, `bail!`, and `ensure!`. Since `0.3` (ROOT-03; `CollectAll` from `0.5`). The anyhow-shaped import works as well:
-
-```rust
-use report_err::{bail, ensure, err, Context, Result};
-```
-
-## Conventions
-
-### Tiers
-
-| Tier | What | Examples |
-|---|---|---|
-| 1 | one import, one type, three macros, two methods | `Result`, `?`, `.context`, `.with_context`, `err!`, `bail!`, `ensure!`, `{}`/`{:#}`/`{:?}`, `fn main() -> Result<()>`, `ExitReport` |
-| 2 | the next 15% of uses | codes and categories, attachments, sections, `chain`, `find`, groups, `Errors`, `collect_all`, suppressed errors, `trace`, `configure`, `report`, `record`, `boundary` |
-| 3 | the full surface for other libraries | `find_all`, `push_child`, `split`, `flatten`, `render`, `from_info`, `info`, `from_panic`, `limits` |
-
-### Names you already know
-
-Every name anyhow users write is the same here, with the same meaning: `Error`, `Result`, `Context` (`context`, `with_context`), `bail!`, `ensure!`, `format_err!`, `Ok`, `Error::new`, `Error::msg`, `chain`, `root_cause`, `downcast`, `downcast_ref`, `downcast_mut`, `is`, `backtrace`, and an `Error` that dereferences to `dyn std::error::Error` with every context layer in its `source()` chain. anyhow's `anyhow!` is `err!` here. The differences that remain are listed in [`../dev/PLAN.md`](../dev/PLAN.md) 8.14.2.
-
-### No panics, and the one error this crate returns
-
-No function in this crate panics because of its own state or input. A panic can come only from code the caller supplies (a `Display`, a `Drop`, a closure) and, outside the guarded paths ([Formatting](#formatting)), it propagates as it would anywhere else. When a budget is reached ([`Limits`](#limits)), data is dropped and counted, never refused with an error and never printed unbounded. The crate's own error type is [`ConfigureError`](#configureerror). Allocation failure aborts the process, as everywhere in `alloc`.
-
-### Threads
-
-`Error` is `Send + Sync + Unpin + UnwindSafe + RefUnwindSafe + 'static`. Every `&self` method only reads, except `report`, which sets an atomic flag, so a `&Error` (for example in an `Arc`) can be read and reported from several threads; exactly one `report` returns `true`. Every method that changes an error takes `self` or `&mut self`. Context values, attachments, and children must be `Send + Sync`.
-
-### What can never be observed
-
-Errors are values in Rust; there is no throw event. report-err sees an error when an `Error` is created (constructors and the type-changing `?`), when context or a trace point is added, when `report` is called, at a `boundary`, and when `main` returns. It never sees an error discarded with `let _ =`, `.ok()`, or `unwrap_or`; an error handled inside third-party code; a `?` that does not change the error type ([`trace`](#trace-and-backtrace) records that line instead); or a panic under `panic = "abort"`.
 
 ## Tier 1 on one screen
+
+Each common task is one line. The names are anyhow's, so code written for
+anyhow reads the same.
 
 ```rust
 use report_err::{bail, ensure, Context, Result};
 
+#[derive(Debug)]
+struct Config {
+    port: u16,
+}
+
+fn parse(text: &str) -> Result<Config> {
+    let port = text.trim().parse().context("the port is not a number")?;
+    Ok(Config { port })
+}
+
 fn load_config(path: &str) -> Result<Config> {
     let text = std::fs::read_to_string(path)
-        .with_context(|| format!("reading config file {path}"))?;   // io::Error becomes an Error
+        .with_context(|| format!("reading config file {path}"))?;
     ensure!(!text.is_empty(), "config file {path} is empty");
     let config = parse(&text).context("parsing config")?;
     if config.port == 0 {
@@ -162,1032 +141,817 @@ fn load_config(path: &str) -> Result<Config> {
     Ok(config)
 }
 
-fn main() -> Result<()> {
-    let config = load_config("app.noml")?;
-    run(config)
-}
+let error = load_config("no/such/app.noml").unwrap_err();
+assert_eq!(error.to_string(), "reading config file no/such/app.noml");
 ```
 
-When `main` returns the error, the process prints the report and exits with code 1:
+`main` ends with a report in one line too: `fn main() -> Result<()>` prints it
+and exits with 1, and `fn main() -> ExitReport { run(app) }` exits with the
+error's own code and turns a panic into a report
+([`main` and exit codes](#main-and-exit-codes)).
 
-```text
-Error: reading config file app.noml
+## Creating an error
 
-Caused by:
-    No such file or directory (os error 2)
+### `err!` and `format_err!`
 
-Location: src/main.rs:4:10
-```
+`err!(...)` makes an `Error`. `format_err!` is the same macro under anyhow's
+other name. The arms, tried in this order:
 
-With codes from define-err and `ExitReport`, the exit code comes from the error ([`main`](#main)):
+| Arm | Example | Result |
+|---|---|---|
+| a string literal | `err!("no input")` | a message; a literal with no arguments is stored as `&'static str` |
+| a format string and arguments | `err!("bad port {port}")` | a formatted message |
+| a code, then a format string | `err!(DB_DOWN, "after {ms} ms")` | the same, with the code set; the first argument must be a define-err `Code` |
+| any other expression | `err!(io_error)` | an error value becomes the root (as `Error::new`); any other `Display + Debug` value becomes a message (as `Error::msg`) |
 
 ```rust
-fn main() -> report_err::ExitReport {
-    run().into()
-}
+use report_err::err;
+
+let port = 0;
+assert_eq!(err!("no input").to_string(), "no input");
+assert_eq!(err!("bad port {port}").to_string(), "bad port 0");
+assert_eq!(report_err::format_err!("bad port {}", port).to_string(), "bad port 0");
+
+let code = define_err::code!("APP", 7);
+let error = err!(code, "pool empty after {} ms", 250);
+assert_eq!(error.code(), Some(code));
+assert_eq!(error.to_string(), "pool empty after 250 ms");
+
+let io = std::io::Error::other("disk full");
+assert!(err!(io).is::<std::io::Error>());
 ```
 
-## `Error`
+### `bail!` and `ensure!`
+
+`bail!(...)` returns `Err(err!(...))` from the function. `ensure!(cond, ...)`
+does so when `cond` is false; with no message the error says
+`condition failed: ` and the condition's source text. Both take the same arms
+as `err!`, code first included.
 
 ```rust
-pub struct Error { /* one pointer */ }
+use report_err::{bail, ensure, Result};
+
+fn check(len: usize, flags: u8) -> Result<()> {
+    ensure!(len > 0);
+    ensure!(len <= 64, "length {len} is over 64");
+    if flags & 0x80 != 0 {
+        bail!("reserved flag set: {flags:#x}");
+    }
+    Ok(())
+}
+
+assert_eq!(check(0, 0).unwrap_err().to_string(), "condition failed: len > 0");
+assert_eq!(check(65, 0).unwrap_err().to_string(), "length 65 is over 64");
+assert_eq!(check(1, 0x80).unwrap_err().to_string(), "reserved flag set: 0x80");
+assert!(check(1, 0).is_ok());
 ```
 
-One type for any error. Since `0.3` (ERR-01).
+### `Error::new`, `Error::msg`, and `?`
 
-| Property | Value |
+`Error::new(error)` wraps any `std::error::Error + Send + Sync + 'static`; `?`
+and `From` do the same for you. `Error::msg(message)` makes an error from any
+`Display + Debug + Send + Sync + 'static` value. Each records the caller's
+location.
+
+```rust
+use report_err::{Error, Result};
+
+fn read() -> Result<Vec<u8>> {
+    Ok(std::fs::read("no/such/file")?)            // io::Error becomes an Error
+}
+
+let wrapped = Error::new(std::fmt::Error);
+assert!(wrapped.is::<std::fmt::Error>());
+assert_eq!(Error::msg("no input").to_string(), "no input");
+assert!(read().unwrap_err().is::<std::io::Error>());
+```
+
+### `Result` and `Ok`
+
+`Result<T, E = Error>` is `core::result::Result` with `Error` as the default.
+`report_err::Ok(value)` is `Ok` with the error type fixed, for the closures
+and blocks where inference cannot find it. It is not in the prelude.
+
+```rust
+let parse = |text: &str| {
+    let n: u8 = text.parse()?;
+    report_err::Ok(n)
+};
+assert_eq!(parse("7").unwrap(), 7);
+assert!(parse("x").is_err());
+```
+
+## Adding context
+
+### `Context` on `Result` and `Option`
+
+`Context` is a sealed trait on `Result<T, E>` (any `E` that becomes an `Error`)
+and on `Option<T>`. Each method turns the failure into an `Error` and adds to
+it; on success it returns the value untouched, and the `with_` forms do not
+run their closure.
+
+| Method | Adds |
 |---|---|
-| Size | one machine word: `size_of::<Error>()`, `size_of::<Result<(), Error>>()`, and `size_of::<Option<Error>>()` all equal `size_of::<usize>()` (asserted at compile time) |
-| Heap | one allocation holding an 80-byte header (on 64-bit targets) and the root error inline; a second block (192 bytes) only when a second context layer is added, and the extras (472 bytes) with it only when an attachment, a section, a child, a trace point, or a backtrace is |
-| Traits | `Debug`, `Display`, `Deref<Target = dyn Error + Send + Sync + 'static>`, `DerefMut`, `AsRef<dyn Error + Send + Sync + 'static>`, `AsRef<dyn Error + 'static>`, `From<E>` for every `E: core::error::Error + Send + Sync + 'static`, `Send`, `Sync`, `Unpin`, `UnwindSafe`, `RefUnwindSafe` |
-| Not | `Clone` (an error is owned by one call path); `core::error::Error` itself (it could not and still convert from every error through `?`: [`Deref`](#deref-to-dyn-error-the-source-chain) gives the `&dyn Error`) |
-| `#[must_use]` | `Error` and every method that returns an `Error` or a `Result` |
+| `context(c)` / `with_context(\|\| c)` | a context layer, the new outermost message |
+| `coded(code)` | the error's code ([Codes](#codes)) |
+| `note(t)`, `warning(t)`, `suggestion(t)`, and their `with_` forms | a section ([Notes, warnings, and suggestions](#notes-warnings-and-suggestions)) |
+| `attach(value)` | an opaque value ([Attachments](#attachments)) |
+| `trace()` | a step of the trail ([The trail and backtraces](#the-trail-and-backtraces)) |
+| `with_cleanup(\|\| ...)` | runs a cleanup and keeps its failure ([Suppressed errors and cleanup](#suppressed-errors-and-cleanup)) |
 
-### Creating an `Error`
+On `Option`, `None` becomes an error whose message is the context; with only
+`coded`, it is the code's catalog title, or the code itself.
 
 ```rust
-impl<E> From<E> for Error where E: core::error::Error + Send + Sync + 'static;   // #[track_caller]
+use std::collections::HashMap;
+use report_err::{Context, Result};
 
-impl Error {
-    #[track_caller]
-    pub fn new<E>(error: E) -> Error where E: core::error::Error + Send + Sync + 'static;
-    #[track_caller]
-    pub fn msg<M>(message: M) -> Error where M: Display + Debug + Send + Sync + 'static;
+fn port(settings: &HashMap<&str, &str>) -> Result<u16> {
+    let text = settings.get("port").context("no port setting")?;
+    text.parse()
+        .with_context(|| format!("port {text:?} is not a number"))
 }
+
+let mut settings = HashMap::new();
+assert_eq!(port(&settings).unwrap_err().to_string(), "no port setting");
+settings.insert("port", "80x");
+let error = port(&settings).unwrap_err();
+assert_eq!(format!("{error:#}"), "port \"80x\" is not a number: invalid digit found in string");
+settings.insert("port", "80");
+assert_eq!(port(&settings).unwrap(), 80);
 ```
 
-| Id | Item | Since | Behaviour | Cost |
-|---|---|---|---|---|
-| ERR-02 | `From<E>` | 0.3 | what `?` calls; the root is `error`; the location is the `?` | one allocation [est. within 5% of anyhow] |
-| ERR-03 | `Error::new` | 0.3 | as `From`, written out | one allocation |
-| ERR-04 | `Error::msg` | 0.3 | the root is a message; `downcast_ref::<M>()` returns it | one allocation; a `&'static str` is stored, never copied |
+### `Error::context`
 
-Other constructors: [`err!`](#macros-err-bail-ensure), [`group`](#group-children-push_child), [`from_boxed`](#standard-library-interop), [`from_info`](#info), [`from_panic`](#panic-boundary).
+`error.context(c)` adds a layer to an `Error` you already hold. `c` is any
+`Display + Debug + Send + Sync + 'static` value. The first layer is stored in
+the error's own block; layers two to five share one more block.
+
+```rust
+let error = report_err::err!("disk full").context("saving the file").context("closing");
+assert_eq!(error.to_string(), "closing");
+assert_eq!(format!("{error:#}"), "closing: saving the file: disk full");
+```
+
+## Notes, warnings, and suggestions
+
+Sections are text for the person reading the report, printed as `Note:`,
+`Warning:`, and `Suggestion:` lines under the causes, in the order added.
+`Error` has `note`, `warning`, and `suggestion`; `Context` has those and
+`with_note`, `with_warning`, and `with_suggestion`, whose closure runs only on
+failure. A `&'static str` is stored as it is; anything else is formatted once,
+within the error's byte budget.
+
+`sections()` returns a [`Sections`] iterator of [`Section`] values, each with
+a `kind` ([`SectionKind`]: `Note`, `Warning`, `Suggestion`) and its `text`.
+
+```rust
+use report_err::{err, Context, SectionKind};
+
+let error = err!("sync stopped")
+    .note("the server closed the connection")
+    .warning("data written after 12:04 may be missing")
+    .suggestion("run `tool sync --resume`");
+let report = format!("{error:?}");
+assert!(report.contains("Note: the server closed the connection"));
+assert!(report.contains("Warning: data written after 12:04 may be missing"));
+assert!(report.contains("Suggestion: run `tool sync --resume`"));
+
+let kinds: Vec<SectionKind> = error.sections().map(|s| s.kind).collect();
+assert_eq!(kinds, [SectionKind::Note, SectionKind::Warning, SectionKind::Suggestion]);
+
+let tries = 3;
+let failed: Result<(), std::io::Error> = Err(std::io::Error::other("timed out"));
+let error = failed.with_note(|| format!("{tries} tries")).unwrap_err();
+assert_eq!(error.sections().next().map(|s| s.text), Some("3 tries"));
+```
+
+## Attachments
+
+An attachment is a value of any `Send + Sync + 'static` type, read back by
+type. `attach` keeps it opaque: never printed, never reported as text.
+`attach_display` also prints it under `Attachments:`. `attachment::<A>()` is
+the newest of type `A`; `attachments::<A>()` returns an [`Attachments`]
+iterator over all of them, newest first. `Context::attach` attaches on
+failure. Up to 32 are kept, within the byte budget; past that a new one is
+dropped and counted under `Omitted:`.
+
+```rust
+use report_err::{err, Context};
+
+#[derive(Debug, PartialEq)]
+struct RequestId(u64);
+
+let error = err!("order not found").attach(RequestId(7)).attach_display("tenant 42");
+assert_eq!(error.attachment::<RequestId>(), Some(&RequestId(7)));
+let report = format!("{error:?}");
+assert!(!report.contains("RequestId"));
+assert!(report.contains("Attachments:\n    tenant 42"));
+
+let error = err!("x").attach(1u32).attach(2u32);
+assert_eq!(error.attachments::<u32>().copied().collect::<Vec<_>>(), [2, 1]);
+
+let failed: Result<(), std::fmt::Error> = Err(std::fmt::Error);
+let error = failed.attach(RequestId(9)).unwrap_err();
+assert_eq!(error.attachment::<RequestId>(), Some(&RequestId(9)));
+```
+
+## Codes, severity, category, and kinds
+
+These come from define-err; report-err re-exports [`Code`], [`Severity`],
+[`Category`], and [`Kinds`], and never invents a value of its own.
+
+### Codes
+
+`code()` is the code set with `coded` or a code-first macro; else the innermost
+coded error in the chain (a define-err type with `#[code]`); else the root's
+`ErrorInfo` code. `coded(code)` sets it, on an `Error` or through `Context`,
+and wins over a code found in the chain. The report prints it on a `Code:`
+line.
+
+```rust
+use report_err::{Context, Result};
+
+define_err::define_errors! {
+    namespace = "DB";
+    pub enum DbError {
+        #[code(7, name = TIMEOUT, help = "Raise the timeout.")]
+        #[category(Unavailable)]
+        Timeout => "query timed out",
+    }
+}
+
+fn query() -> Result<()> {
+    Err(DbError::Timeout).context("loading the user")
+}
+
+let error = query().unwrap_err();
+assert_eq!(error.code(), Some(DbError::TIMEOUT));
+assert!(format!("{error:?}").contains("Code: DB-0007"));
+
+let code = define_err::code!("APP", 12);
+let error = report_err::err!("disk full").coded(code);
+assert_eq!(error.code().map(|c| c.to_string()).as_deref(), Some("APP-0012"));
+```
+
+### Severity, category, and kinds
+
+| Method | Returns |
+|---|---|
+| `severity()` | `with_severity`'s value; else the code's; else `Severity::FATAL` for a panic; else the category's default |
+| `category()` | the code's; else the category of an `io::Error` root's kind; else `Internal` for a panic; else `Unknown` |
+| `kinds()` | the kinds added with `with_kinds` and the code's, `PANIC` for a panic; `Kinds::ERROR` when there are none |
+| `with_severity(severity)` | the error, with its severity overridden |
+| `with_kinds(kinds)` | the error, with every kind in `kinds` added (combined with OR) |
+
+```rust
+use report_err::{err, Category, Kinds, Severity};
+
+let error = err!("x");
+assert_eq!(error.severity(), Severity::ERROR);
+assert_eq!(error.category(), Category::Unknown);
+assert_eq!(error.kinds(), Kinds::ERROR);
+
+let error = err!("login refused")
+    .with_severity(Severity::CRITICAL)
+    .with_kinds(Kinds::SECURITY | Kinds::AUDIT);
+assert_eq!(error.severity(), Severity::CRITICAL);
+assert!(error.kinds().contains(Kinds::SECURITY | Kinds::AUDIT));
+
+let missing = report_err::Error::new(std::io::Error::from(std::io::ErrorKind::NotFound));
+assert_eq!(missing.category(), Category::NotFound);
+```
+
+### Public messages and `ErrorInfo`
+
+`public_message()` is text a client may see, for an error with a code: the
+code's catalog entry; else the root's `ErrorInfo`; else the category's default
+public message. It is `None` without a code, and never comes from a
+`Display`, which is a private message for logs.
+
+`Error::from_info(error)` wraps a define-err error like `Error::new` and keeps
+it reachable as `&dyn ErrorInfo` through `info()`, so per-value metadata the
+code alone cannot carry (`retry_after`, a `#[location]` field) survives.
+
+```rust
+define_err::define_errors! {
+    pub enum Busy {
+        Pool { #[retry_after] wait: core::time::Duration } => "pool is busy",
+    }
+}
+
+let error = report_err::err!("db password rejected for root");
+assert_eq!(error.public_message(), None);
+let error = error.coded(define_err::code!("APP", 1));
+assert_eq!(error.public_message(), Some("An unexpected error occurred."));
+
+let wait = core::time::Duration::from_millis(250);
+let error = report_err::Error::from_info(Busy::Pool { wait });
+assert_eq!(error.info().and_then(|i| i.retry_after()), Some(wait));
+assert!(report_err::err!("x").info().is_none());
+```
+
+### Catalogs
+
+A code set with `coded` or a code-first macro is only a number. Give
+`configure_catalogs` your define-err catalogs, once, at the start of `main`,
+and such a code finds its title, severity, category, kinds, and public message
+in them. A second call returns `ConfigureError::AlreadyConfigured`.
+
+```rust
+define_err::define_errors! {
+    namespace = "DB";
+    pub enum DbError {
+        #[code(1, name = TIMEOUT, help = "Raise the timeout.", title = "Query timed out")]
+        #[category(Unavailable)]
+        Timeout => "query timed out",
+    }
+}
+
+static CATALOGS: &[&[define_err::CodeInfo]] = &[DbError::CATALOG];
+report_err::configure_catalogs(CATALOGS).unwrap();
+
+let error = report_err::err!("no reply").coded(DbError::TIMEOUT);
+assert_eq!(error.category(), report_err::Category::Unavailable);
+assert_eq!(report_err::configure_catalogs(CATALOGS), Err(report_err::ConfigureError::AlreadyConfigured));
+```
+
+## Reading an error
+
+### The `source()` chain
+
+`Error` dereferences (`Deref`, `DerefMut`, `AsRef`) to
+`dyn std::error::Error + Send + Sync`, so it works wherever a `&dyn Error` is
+expected. Its `source()` walks every context layer, then the root, then the
+root's own sources. `chain()` returns a [`Chain`] iterator over the same links,
+outermost first, that can also run backwards (`chain().rev()`).
+`root_cause()` is the last link.
+
+```rust
+use std::error::Error as _;
+
+let error = report_err::Error::new(std::fmt::Error).context("rendering").context("saving");
+let links: Vec<String> = error.chain().map(|l| l.to_string()).collect();
+assert_eq!(links, ["saving", "rendering", "an error occurred when formatting an argument"]);
+assert_eq!(error.chain().rev().next().map(|l| l.to_string()), links.last().cloned());
+assert!(error.root_cause().is::<std::fmt::Error>());
+assert_eq!(error.source().map(|s| s.to_string()).as_deref(), Some("rendering"));
+
+fn takes_std(error: &(dyn std::error::Error + 'static)) -> String {
+    error.to_string()
+}
+assert_eq!(takes_std(&*error), "saving");
+```
+
+### Downcasting
+
+`downcast_ref::<T>()` and `downcast_mut::<T>()` look at each context value and
+the root, as anyhow does; `is::<T>()` says whether one matches. `downcast::<T>()`
+takes the root out by value, or returns the error unchanged.
 
 ```rust
 use report_err::Error;
 
-let a = Error::new(std::io::Error::other("disk full"));
-let b = Error::msg("no input files");
-let c = Error::msg(format!("{count} files failed"));
+let mut error = Error::new(std::io::Error::other("disk full")).context("saving");
+assert!(error.is::<std::io::Error>());
+assert_eq!(error.downcast_ref::<&str>(), Some(&"saving"));
+assert!(error.downcast_mut::<std::io::Error>().is_some());
 
-fn read(path: &str) -> report_err::Result<String> {
-    Ok(std::fs::read_to_string(path)?)           // From<io::Error>
-}
+let io: std::io::Error = Error::new(std::io::Error::other("x")).downcast().unwrap();
+assert_eq!(io.to_string(), "x");
+let still = Error::msg("not io").downcast::<std::io::Error>().unwrap_err();
+assert_eq!(still.to_string(), "not io");
 ```
 
-`?` on a `Result<_, Box<dyn Error + Send + Sync>>` does not compile, as with anyhow (a boxed error is not itself an `Error` type); the compiler's note points to [`from_boxed`](#standard-library-interop).
+### Searching a tree
 
-### `context`
-
-```rust
-impl Error {
-    #[track_caller]
-    pub fn context<C>(self, context: C) -> Error where C: Display + Send + Sync + 'static;
-}
-```
-
-Adds a layer: `context` becomes the outermost message, and the error that was outermost becomes its source. Since `0.3` (ERR-05).
-
-- A `&'static str` is stored as is and a `String` is moved in; neither is copied. Any other `C` is boxed and stays downcastable as `C`.
-- The first layer lives in the error's own allocation and costs nothing; the second allocates the extension block once; layers three to five cost nothing more; later layers grow a vector [measured: one allocation in all for 1 layer, two for 3 or 5 layers, three for 9; anyhow: 2, 4, 6, 10]. Create plus 3 layers took 65.6 ns, anyhow 110.5 ns; plus 9 layers 125.5 ns, anyhow 409.1 ns [measured].
-- The number of layers is bounded by [`Limits::max_frames`](#limits) (64): past it, the oldest middle layers are dropped and counted, never the innermost or the newest.
+`find::<T>()` is the first `T` anywhere in the tree, depth first: the context
+values, the root, the root's sources, then each child's tree. `find_all::<T>()`
+returns a [`FindAll`] iterator over every one, in the same order. Suppressed
+errors are not causes and are not searched; search them with
+`error.suppressed().iter().find_map(|e| e.find::<T>())`.
 
 ```rust
-let error = error.context("while compacting level 2");
-```
+use report_err::{err, Context, Error};
 
-On a `Result` or an `Option`, the same method comes from the [`Context`](#context-on-result-and-option) trait.
+let io = || Error::new(std::io::Error::other("x")).context("reading");
+let error = Error::group("load failed", [err!("bad row"), io(), io()]);
+assert!(error.find::<std::io::Error>().is_some());
+assert_eq!(error.find_all::<std::io::Error>().count(), 2);
+assert!(error.downcast_ref::<std::io::Error>().is_none()); // not in the group's own chain
 
-### `Deref` to `dyn Error`: the `source()` chain
-
-```rust
-impl Deref for Error { type Target = dyn core::error::Error + Send + Sync + 'static; }
-impl DerefMut for Error;
-impl AsRef<dyn core::error::Error + Send + Sync + 'static> for Error;
-impl AsRef<dyn core::error::Error + 'static> for Error;
-```
-
-An `Error` works wherever a `&dyn Error` is expected, as anyhow's does. Since `0.3` (ERR-19, PLAN D-003).
-
-- The target is the outermost layer: the newest context, or the root error itself when there is no context.
-- Its `source()` is the next layer inward, and so on through every context layer to the root error, then the root error's own `source()` chain. Walking `source()` by hand visits exactly the links [`chain`](#chain-and-chain) visits, in the same order.
-- No allocation. A hand-written `source()` walk costs one load and one branch per link: 2.93 / 5.64 / 8.07 / 13.69 ns for 1 / 3 / 5 / 9 layers, anyhow 2.98 / 6.35 / 9.85 / 16.78 ns [measured]. `chain()` walks the error's own store directly and is as fast or faster (9 layers: 9.3 ns, anyhow 18.4 ns) [measured].
-
-```rust
-fn log_cause(error: &(dyn std::error::Error + 'static)) {
-    let mut cause = error.source();
-    while let Some(c) = cause {
-        eprintln!("  because: {c}");
-        cause = c.source();
-    }
-}
-
-let error = load().context("starting server").unwrap_err();
-log_cause(&*error);                                   // every layer, then the io::Error
-log_cause(error.as_ref());                            // the same
-let source = error.source();                          // auto-deref: the layer below "starting server"
-```
-
-`(&*error).downcast_ref::<T>()` asks the outermost layer only, as with anyhow; use [`Error::downcast_ref`](#downcasting), which searches every layer and the root.
-
-### Downcasting
-
-```rust
-impl Error {
-    pub fn downcast_ref<T>(&self) -> Option<&T> where T: Display + Debug + Send + Sync + 'static;
-    pub fn downcast_mut<T>(&mut self) -> Option<&mut T> where T: Display + Debug + Send + Sync + 'static;
-    pub fn downcast<T>(self) -> core::result::Result<T, Error> where T: Display + Debug + Send + Sync + 'static;
-    pub fn is<T>(&self) -> bool where T: Display + Debug + Send + Sync + 'static;
-}
-```
-
-| Id | Method | Tier | Since |
-|---|---|---|---|
-| ERR-06 | `downcast_ref` | 1 | 0.3 |
-| ERR-07 | `downcast_mut` | 2 | 0.3 |
-| ERR-08 | `downcast` | 2 | 0.3 |
-| ERR-09 | `is` | 1 | 0.3 |
-
-Each searches the context values, newest first, then the root error, and finds a value whose type is exactly `T`, as anyhow does. A message root (`Error::msg`, `err!`) answers to its message type: `&'static str` for a literal, `String` for a formatted message. A string context layer answers to `&'static str` or `String`. Errors deeper in the root's `source()` chain are not searched: use [`find`](#find-find_all-find_in_suppressed).
-
-`downcast` moves the value out and frees the rest; on a miss it returns the error unchanged (same allocation). Cost: 1.01 ns to the root after three string layers, anyhow 2.47 ns [measured]; the layers are skipped when no layer could hold a `T`. No allocation.
-
-```rust
-if let Some(io) = error.downcast_ref::<std::io::Error>() {
-    if io.kind() == std::io::ErrorKind::NotFound {
-        create_default()?;
-    }
-}
-
-#[derive(Debug)]
-struct ShardId(u32);
-impl std::fmt::Display for ShardId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "shard {}", self.0) }
-}
-let error = load_shard(7).context(ShardId(7)).unwrap_err();
-assert_eq!(error.downcast_ref::<ShardId>().map(|s| s.0), Some(7));
-let io: std::io::Error = error.downcast().expect("the root was an io::Error");
+let error = err!("write failed").suppress(Error::new(std::fmt::Error));
+assert!(error.find::<std::fmt::Error>().is_none());
+assert!(error.suppressed().iter().find_map(|e| e.find::<std::fmt::Error>()).is_some());
 ```
 
 ### Location
 
-```rust
-impl Error {
-    pub fn location(&self) -> &'static core::panic::Location<'static>;
-}
-```
-
-Where the error was created: the `?`, `Error::new`, `err!`, `bail!`, or `ensure!` that made it (`#[track_caller]`, no allocation). Since `0.3` (ERR-10). The way it travelled is the [trail](#trace-and-backtrace).
+`location()` is where the error was created: the line of `err!`, `bail!`,
+`ensure!`, `Error::new`, or the `?` that converted it.
 
 ```rust
-eprintln!("created at {}", error.location());   // src/store.rs:88:21
+let error = report_err::err!("x");
+assert_eq!(error.location().line(), line!() - 1);
+assert!(error.location().file().ends_with(".rs"));
 ```
 
-### Codes, severity, category, kinds
+## Printing an error
 
-```rust
-pub use define_err::{Code, Severity, Category, Kinds};   // re-exported at the crate root
+### `{}`, `{:#}`, and `{:?}`
 
-impl Error {
-    pub fn code(&self) -> Option<Code>;
-    pub fn coded(self, code: Code) -> Error;
-    pub fn severity(&self) -> Severity;
-    pub fn category(&self) -> Category;
-    pub fn kinds(&self) -> Kinds;
-    pub fn with_severity(self, severity: Severity) -> Error;
-    pub fn with_kind(self, kinds: Kinds) -> Error;
-    pub fn public_message(&self) -> Option<&'static str>;
-    pub fn is_panic(&self) -> bool;
-}
-```
-
-| Id | Method | Tier | Since | Answer |
-|---|---|---|---|---|
-| ERR-11 | `code` | 1 | 0.4 | the explicit code (`coded`, a code-first macro); else the innermost coded error in the chain, read through define-err's `innermost_code`; else the code of a `from_info` root; else `None` |
-| ERR-12 | `coded` | 1 | 0.4 | sets the explicit code, replacing an earlier one |
-| ERR-13 | `severity` | 2 | 0.4 | `with_severity`; else the coded error's identity (an uncoded defined root answers too); else, for an explicit code, its catalog entry ([`configure_catalogs`](#configure_catalogs)); else the `from_info` root; else `FATAL` (21) for a panic; else the category's default severity |
-| ERR-13 | `category` | 2 | 0.4 | the coded error's identity (an uncoded defined root answers too); else the catalog entry of an explicit code; else the `from_info` root; else `Category::from_io_kind` when the root is a `std::io::Error` (**std**); else `Internal` for a panic; else `Unknown` |
-| ERR-13 | `kinds` | 2 | 0.4 | `with_kind` bits, OR the coded error's kinds, OR the creation hook's kinds, OR `Kinds::PANIC` for a panic; `Kinds::ERROR` when empty |
-| ERR-14 | `with_severity`, `with_kind` | 2 | 0.4 | overrides; kinds are added with OR |
-| ERR-15 | `public_message` | 2 | 0.4 | the public message of the code: from the catalog entry, or from the root's `ErrorInfo` when the error was built with `from_info`; when only the identity is known, the category's default public message (the identity probe carries no text, so a variant's `#[public]` needs a catalog or `from_info`); `None` when there is no code. A `from_info` root with a different code than the error's does not answer |
-| ERR-16 | `is_panic` | 2 | 0.5 | created by `boundary` or `from_panic` |
-
-Context layers never carry a code; children are not consulted (a group has its own code or none). `Display` of an error is a private message for logs; `public_message` and the category are the only parts meant for a client.
-
-Cost: `code` set by hand under 1 ns; `code` found under three contexts 44 to 80 ns [measured on a loaded machine, 0.4.0]; `coded`, `with_severity`, and `with_exit_code` one store; the first `with_kind` allocates the extras (and the extension block) if there are none.
-
-```rust
-use report_err::{bail, Context, Result};
-
-fn load_user(id: u64) -> Result<User> {
-    let row = db.get(id).coded(DbError::NOT_FOUND)?;          // Option or Result
-    if !row.active {
-        bail!(UserError::INACTIVE, "user {id} is inactive");
-    }
-    Ok(row.into())
-}
-
-match load_user(id) {
-    Err(e) if e.code() == Some(DbError::TIMEOUT) => retry_later(),
-    Err(e) => return Err(e.context("in the account page")),
-    Ok(user) => user,
-}
-
-let (status, text) = (error.category().http_status(), error.public_message().unwrap_or("error"));
-```
-
-### Formatting
-
-```rust
-impl Display for Error;
-impl Debug for Error;
-```
-
-Since `0.3` (ERR-17); the blocks after `Location:` from `0.4` and `0.5`.
-
-For an error created by
-
-```rust
-fn read_config() -> Result<String> {
-    Ok(std::fs::read_to_string("app.noml").context("reading config")?)    // line 2
-}
-fn start() -> Result<()> {
-    let _text = read_config().context("starting server")?;               // line 5
-    Ok(())
-}
-```
-
-| Format | Output |
+| Format | Prints |
 |---|---|
-| `{}` | `starting server` |
-| `{:#}` | `starting server: reading config: No such file or directory (os error 2)` |
-| `{:?}` | the report below |
-| `{:#?}` | `Error { message: "starting server", code: None, location: src/main.rs:2:61, layers: ["starting server", "reading config"], root: Os { code: 2, kind: NotFound, message: "No such file or directory" }, children: 0, suppressed: 0, attachments: 0 }` |
+| `{}` | the outermost message |
+| `{:#}` | the chain on one line, joined by `": "` |
+| `{:?}` | the report, as `main` prints it |
+| `{:#?}` | the error's fields, for debugging report-err itself |
 
-```text
-starting server
+The report, block by block, each only when it has content: the outermost
+message; `Caused by:` (one line for one cause, numbered for several);
+`Causes (n):` with the children as a tree; the `Note:`, `Warning:`, and
+`Suggestion:` lines; `Suppressed:`; `Code:`; `Location:`; `Trace:` when the
+error travelled; `Attachments:`; `Fields:` from the creation hook; `Omitted:`
+for what a budget dropped; `Backtrace:` when one was captured.
 
-Caused by:
-    0: reading config
-    1: No such file or directory (os error 2)
-
-Location: src/main.rs:2:61
-Trace:
-    0: src/main.rs:2:61  (origin)
-    1: src/main.rs:2:61  reading config
-    2: src/main.rs:5:31  starting server
-```
-
-The `{:?}` report, block by block, each printed only when it has content: the outermost message; `Caused by:` (one unnumbered line for one cause, numbered as anyhow does for several); `Causes (n):` the children as a tree; `Note:`, `Warning:`, `Suggestion:` lines in the order added; `Suppressed:`; `Code: DB-0042 (unavailable, severity 17)`; `Location:`; `Trace:` when there is more than the origin; `Attachments:` (only those added with `attach_display`); `Fields:` (from the creation hook); `Omitted:` (what a budget dropped); `Backtrace:` when one was captured.
-
-- **De-duplication.** In `{:#}` and in `Caused by:`, a layer is skipped when the layer before it already ends with `": "` followed by exactly its text, or is exactly its text, so an error whose `Display` already includes its source is not printed twice. Only adjacent layers are compared.
-- **Flags.** Width, fill, and precision are ignored; only `#` changes the output.
-- **Cost.** `{}`, `{:#}`, and `{:?}` do not allocate (`{:?}` may, from `0.4`, to resolve backtrace symbols) [measured by `tests/alloc.rs`]. For an error with three layers: `{}` 7.5 ns (anyhow 8.3), `{:#}` 54.7 ns (anyhow 27.3: the de-duplication rule formats the root into a buffer to compare it), `{:?}` 106.8 ns (anyhow 92.4, which prints no `Location:`) [measured].
-- **Guarded paths.** `{:?}` through [`ExitReport`](#exitreport), [`report`](#report-and-is_reported), [`record`](#record), [`render`](#render-and-renderstyle), and `unraisable` survive a `Display` that panics (with `std` and unwinding), fails, or never stops writing: the layer prints `<display panicked>` or `<display failed>`, and output stops at [`Limits::max_render`](#limits) with `(report truncated)`. `{}` and `{:#}` are not guarded; they behave like any other `Display`.
-
-## `Result` and `Ok`
-
-```rust
-pub type Result<T, E = Error> = core::result::Result<T, E>;
-
-pub fn Ok<T>(value: T) -> Result<T>;
-```
-
-| Id | Item | Tier | Since |
-|---|---|---|---|
-| ROOT-02 | `Result` | 1 | 0.3 |
-| ROOT-04 | `Ok` | 1 | 0.4 |
-
-`Result<T, MyError>` still works where a typed error is wanted. `Ok` is anyhow's helper for closures and blocks whose error type cannot be inferred; it is not in the prelude, because a glob import would shadow `core::result::Result::Ok` in patterns.
-
-```rust
-let parse = |s: &str| -> report_err::Result<u32> { Ok(s.trim().parse()?) };
-let value = (|| { let n: u32 = "7".parse()?; report_err::Ok(n * 2) })()?;
-```
-
-## `Context` on `Result` and `Option`
-
-```rust
-pub trait Context<T, E>: private::Sealed {
-    fn context<C>(self, context: C) -> Result<T, Error> where C: Display + Send + Sync + 'static;
-    fn with_context<C, F>(self, f: F) -> Result<T, Error> where C: Display + Send + Sync + 'static, F: FnOnce() -> C;
-    fn coded(self, code: Code) -> Result<T, Error>;
-    fn note<S>(self, text: S) -> Result<T, Error> where S: Display + Send + Sync + 'static;
-    fn with_note<S, F>(self, f: F) -> Result<T, Error> where S: Display + Send + Sync + 'static, F: FnOnce() -> S;
-    fn warning<S>(self, text: S) -> Result<T, Error> where S: Display + Send + Sync + 'static;
-    fn with_warning<S, F>(self, f: F) -> Result<T, Error> where S: Display + Send + Sync + 'static, F: FnOnce() -> S;
-    fn suggestion<S>(self, text: S) -> Result<T, Error> where S: Display + Send + Sync + 'static;
-    fn with_suggestion<S, F>(self, f: F) -> Result<T, Error> where S: Display + Send + Sync + 'static, F: FnOnce() -> S;
-    fn attach<A>(self, value: A) -> Result<T, Error> where A: Send + Sync + 'static;
-    fn trace(self) -> Result<T, Error>;
-    fn with_cleanup<F, R>(self, cleanup: F) -> Result<T, Error>
-        where F: FnOnce() -> core::result::Result<(), R>, R: Into<Error>;
-}
-
-impl<T, E> Context<T, E> for core::result::Result<T, E> where E: core::error::Error + Send + Sync + 'static;
-impl<T> Context<T, Error> for core::result::Result<T, Error>;
-impl<T> Context<T, core::convert::Infallible> for Option<T>;
-```
-
-The trait is sealed, as anyhow's is, so the two `Result` impls can never overlap. Every method is `#[track_caller]`. On `Ok` and `Some` every method returns the value untouched and no closure runs; nothing is allocated.
-
-| Id | Methods | Tier | Since | Notes |
-|---|---|---|---|---|
-| CTX-01 | `context`, `with_context` on `Result` | 1 | 0.3 | `io_result.context("literal")?` is one allocation, the same as anyhow; the closure of `with_context` runs only on `Err` |
-| CTX-02 | `context`, `with_context` on `Option` | 1 | 0.3 | `None` becomes an error whose root is the context message |
-| CTX-03 | `coded` | 1 | 0.4 | on `None`: an error with that code whose message is the code's catalog title when [catalogs](#configure_catalogs) are configured, else the code itself (`DB-0042`) |
-| CTX-04 | `note`, `warning`, `suggestion` and their `with_` forms | 1 | 0.4 | [sections](#note-warning-suggestion) |
-| CTX-05 | `attach` | 2 | 0.4 | [attachments](#attach-attachment-attachments-attach_display) |
-| CTX-06 | `trace` | 2 | 0.4 | [trace points](#trace-and-backtrace) |
-| CTX-07 | `with_cleanup` | 2 | 0.5 | [cleanup](#suppressed-errors-and-cleanup) |
+In `{:#}` and `Caused by:`, a layer whose text the layer above already ends
+with is skipped, so an error whose `Display` repeats its source is not printed
+twice. Width, fill, and precision are ignored. `{}`, `{:#}`, and `{:?}` are not
+guarded: a `Display` that misbehaves misbehaves here as anywhere else. Use
+[`render`](#render-and-renderstyle), `ExitReport`, `report`, or `record` where
+it must not.
 
 ```rust
 use report_err::Context;
 
-let text = std::fs::read_to_string(path).context("reading the config file")?;
-let text = std::fs::read_to_string(path).with_context(|| format!("reading {path}"))?;
-let home = std::env::var_os("HOME").context("HOME is not set")?;
-let parent = path.parent().context("entry file has no parent directory")?;   // was .ok_or_else(|| anyhow!(..))
-let user = cache.get(&id).coded(UserError::NOT_FOUND)?;
-let bytes = read_blob(id)
-    .note(format!("blob {id} is referenced by {count} pages"))
-    .suggestion("run `hive repair --blobs`")?;
-let plan = optimise(plan).trace()?;
+let error = std::fs::read_to_string("no/such/app.noml")
+    .context("reading config")
+    .context("starting server")
+    .unwrap_err();
+assert_eq!(error.to_string(), "starting server");
+assert!(format!("{error:#}").starts_with("starting server: reading config: "));
+
+let report = format!("{error:?}");
+assert!(report.starts_with("starting server\n\nCaused by:\n    0: reading config\n    1: "));
+assert!(report.contains("\nLocation: "));
 ```
 
-## Macros: `err!`, `bail!`, `ensure!`
+### `render` and `RenderStyle`
+
+`render(out, style)` writes `{}`, `{:#}`, or `{:?}` ([`RenderStyle`]:
+`Message`, `Chain`, `Report`) in a form that cannot fail on the error's
+account, for a panic hook or a crash path. A `Display` that panics prints
+`<display panicked>` (with `std` and unwinding), one that fails prints
+`<display failed>`, and the output stops at `max_render` bytes with
+`(report truncated)`. It returns `Err` only when `out` itself fails.
 
 ```rust
-err!(...)          // an Error
-format_err!(...)   // the same as err!, under anyhow's and eyre's other name
-bail!(...)         // return Err(err!(...))
-ensure!(cond, ...) // if !cond { bail!(...) }
-```
+use std::fmt;
+use report_err::RenderStyle;
 
-| Id | Item | Tier | Since |
-|---|---|---|---|
-| MAC-01 | `err!` (and `format_err!`) | 1 | 0.3 |
-| MAC-02 | `bail!` | 1 | 0.3 |
-| MAC-03 | `ensure!` | 1 | 0.3 |
-| MAC-04 | code-first arms of all three | 1 | 0.4 |
-
-Arms, tried in this order (shown for `err!`):
-
-| Arm | Example | Result |
-|---|---|---|
-| a string literal | `err!("no input")` | a message root; a literal with no `{}` arguments is stored as `&'static str` (no allocation beyond the error itself) |
-| a format string with arguments | `err!("bad port {}", p)`, `err!("bad port {p}")` | a formatted message root (`String`) |
-| a code, then a format string | `err!(DbError::TIMEOUT, "after {ms} ms")` | as above, with the code set; the first argument must be a define-err `Code` (a type error otherwise, with a note saying so) |
-| any other expression | `err!(io_error)`, `err!(message_string)` | an error value becomes the root (`Error::new`); any other `Display + Debug` value becomes a message root (`Error::msg`); chosen at compile time |
-
-`ensure!(cond)` with no message produces `condition failed: ` followed by the condition's source text. A condition that contains braces is printed literally, never read as a format string. Inline captures (`{name}`) work in every format arm.
-
-Cost: `err!("literal")` and `bail!("literal")` one allocation; `err!("value {x}")` two (the `String` and the error) [est., as anyhow].
-
-```rust
-use report_err::{bail, ensure, err, Result};
-
-fn check_header(h: &Header) -> Result<()> {
-    ensure!(h.magic == MAGIC, "bad magic {:#x}", h.magic);
-    ensure!(h.version <= 3, FormatError::UNSUPPORTED_VERSION, "version {} is newer than 3", h.version);
-    ensure!(h.len > 0);                                  // "condition failed: h.len > 0"
-    if h.flags & RESERVED != 0 {
-        bail!("reserved flags set: {:#b}", h.flags & RESERVED);
-    }
-    Ok(())
-}
-
-let error = err!("unexpected token {token:?}");
-let sigs = load_signatures().map_err(|e| err!(e)).context("invalid FFI signature table")?;
-```
-
-## Chain tools
-
-### `chain` and `Chain`
-
-```rust
-impl Error {
-    pub fn chain(&self) -> Chain<'_>;
-}
-
-#[derive(Clone)]
-pub struct Chain<'a> { /* private */ }
-impl<'a> Iterator for Chain<'a> { type Item = &'a (dyn core::error::Error + 'static); }
-impl DoubleEndedIterator for Chain<'_>;
-impl ExactSizeIterator for Chain<'_>;
-impl FusedIterator for Chain<'_>;
-```
-
-| Id | Item | Tier | Since |
-|---|---|---|---|
-| CHN-01 | `chain`, `Chain` | 1 | 0.3 |
-| CHN-06 | `DoubleEndedIterator` (`rev`) | 3 | 0.5 |
-
-Yields, outermost first: every context layer (newest to oldest), the root error, then the root's own `source()` chain. These are exactly the links a hand-written `source()` walk from `&*error` visits; `chain()` reads the context layers from the error's own store instead of following `source()` [measured: 9.3 ns for nine layers and the root, anyhow 18.4 ns]. Bounded by [`Limits::max_chain`](#limits) (128): a `source()` that returns itself or never ends stops there, and `len()` stays exact. No allocation; `rev` walks from the front to each link it returns, so a reversed walk costs O(n²) links for a chain of n (n is at most `max_chain`).
-
-```rust
-for (index, cause) in error.chain().enumerate() {
-    if index > 0 { combined.push_str("\ncaused by: "); }
-    combined.push_str(&cause.to_string());
-}
-```
-
-### `root_cause`
-
-```rust
-impl Error {
-    pub fn root_cause(&self) -> &(dyn core::error::Error + 'static);
-}
-```
-
-The last link of the chain. Since `0.3` (CHN-02).
-
-```rust
-log::error!("{error} (root: {})", error.root_cause());
-```
-
-### `find`, `find_all`, `find_in_suppressed`
-
-```rust
-impl Error {
-    pub fn find<T: core::error::Error + 'static>(&self) -> Option<&T>;
-    pub fn find_all<T: core::error::Error + 'static>(&self) -> FindAll<'_, T>;
-    pub fn find_in_suppressed<T: core::error::Error + 'static>(&self) -> Option<&T>;
-}
-```
-
-| Id | Method | Tier | Since |
-|---|---|---|---|
-| CHN-03 | `find` | 2 | 0.5 |
-| CHN-04 | `find_all` | 3 | 0.5 |
-| CHN-05 | `find_in_suppressed` | 3 | 0.5 |
-
-`find` searches the whole tree, depth first: the chain of this error, then each child's tree. Suppressed errors are not causes and are searched only by `find_in_suppressed`. The walk is iterative and bounded by `max_depth` and `max_chain`, so a deep tree cannot overflow the stack. No allocation beyond a bounded stack.
-
-```rust
-if let Some(io) = error.find::<std::io::Error>() {
-    eprintln!("I/O failure: {}", io.kind());
-}
-let timeouts = error.find_all::<DbError>().filter(|e| matches!(e, DbError::Timeout { .. })).count();
-```
-
-## Attachments and sections
-
-### `attach`, `attachment`, `attachments`, `attach_display`
-
-```rust
-impl Error {
-    pub fn attach<A: Send + Sync + 'static>(self, value: A) -> Error;
-    pub fn attachment<A: 'static>(&self) -> Option<&A>;
-    pub fn attachments<A: 'static>(&self) -> Attachments<'_, A>;   // Iterator<Item = &A>, newest first
-    pub fn attach_display<A: Display + Send + Sync + 'static>(self, value: A) -> Error;
-}
-```
-
-| Id | Method | Tier | Since |
-|---|---|---|---|
-| ATT-01 | `attach` | 2 | 0.4 |
-| ATT-02 | `attachment` | 2 | 0.4 |
-| ATT-03 | `attachments` | 3 | 0.4 |
-| ATT-04 | `attach_display` | 2 | 0.4 |
-
-Any value, read back by type on stable Rust. Attachments are **opaque**: never printed, never reported as text, unless added with `attach_display`, which also prints them under `Attachments:`. Bounded by `max_attachments` (32) and `max_bytes`, which counts the value's own size and, for a `String`, `Vec<u8>`, `Box<str>`, or `Box<[u8]>`, its heap bytes too; past either, the new value is dropped and counted. Cost [est.]: one allocation for the value, plus the extras (and the extension block) if they do not exist yet.
-
-```rust
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct RequestId(u64);
-
-fn handle(req: &Request) -> Result<Response> {
-    let order = load_order(req.order).attach(RequestId(req.id))?;
-    Ok(render(order))
-}
-
-if let Err(error) = handle(&req) {
-    let id = error.attachment::<RequestId>().copied();
-    respond_error(id, error.category());
-    error.report();
-}
-```
-
-### `note`, `warning`, `suggestion`
-
-```rust
-impl Error {
-    pub fn note<S: Display + Send + Sync + 'static>(self, text: S) -> Error;
-    pub fn warning<S: Display + Send + Sync + 'static>(self, text: S) -> Error;
-    pub fn suggestion<S: Display + Send + Sync + 'static>(self, text: S) -> Error;
-    pub fn with_note<S: Display + Send + Sync + 'static, F: FnOnce() -> S>(self, f: F) -> Error;
-    pub fn with_warning<S: Display + Send + Sync + 'static, F: FnOnce() -> S>(self, f: F) -> Error;
-    pub fn with_suggestion<S: Display + Send + Sync + 'static, F: FnOnce() -> S>(self, f: F) -> Error;
-}
-```
-
-Text for the person reading the report, printed under the cause list in the order added. Since `0.4` (ATT-05). A `&'static str` is stored as is; anything else is formatted once, when added, into bounded text (`max_bytes`, cut at a character boundary with `...(truncated)`), so a section can never panic while a report is printed.
-
-```rust
-let error = error
-    .note("the cache was rebuilt 3 times in the last minute")
-    .warning("data written after 12:04 may be missing")
-    .suggestion("check disk health with `smartctl -a /dev/nvme0`");
-```
-
-### `sections`, `Section`, `SectionKind`
-
-```rust
-impl Error {
-    pub fn sections(&self) -> Sections<'_>;              // Iterator<Item = Section<'_>>, in order added
-}
-
-#[non_exhaustive]
-pub struct Section<'a> { pub kind: SectionKind, pub text: &'a str }
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-#[non_exhaustive]
-pub enum SectionKind { Note, Warning, Suggestion }
-```
-
-Since `0.4` (ATT-06, ATT-07). For renderers that print sections their own way.
-
-```rust
-for section in error.sections() {
-    match section.kind {
-        SectionKind::Suggestion => eprintln!("hint: {}", section.text),
-        _ => eprintln!("{}", section.text),
+struct Broken;
+impl fmt::Display for Broken {
+    fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Err(fmt::Error)
     }
 }
+
+let error = report_err::err!("root").context(Broken);
+let mut text = String::new();
+error.render(&mut text, RenderStyle::Chain).unwrap();
+assert_eq!(text, "<display failed>: root");
+
+text.clear();
+report_err::err!("x").context("y").render(&mut text, RenderStyle::Message).unwrap();
+assert_eq!(text, "y");
 ```
 
 ## Several causes
 
-### `group`, `children`, `push_child`
+### `Error::group` and `children`
+
+`Error::group(message, errors)` is an error made of several failures: the
+message is its root, the errors its children, in order. `children()` is the
+slice of them (empty for an error that is not a group). `push_child(child)`
+adds one more to any error and returns `false` when its tree does not fit the
+budget (`max_tree` errors, `max_depth` levels); a refused child is counted
+under `Omitted:`.
 
 ```rust
-impl Error {
-    #[track_caller]
-    pub fn group<M, I>(message: M, errors: I) -> Error
-        where M: Display + Debug + Send + Sync + 'static, I: IntoIterator<Item = Error>;
-    pub fn children(&self) -> &[Error];
-    pub fn push_child(&mut self, child: impl Into<Error>) -> bool;
-}
-```
+use report_err::{err, Error};
 
-| Id | Method | Tier | Since |
-|---|---|---|---|
-| GRP-01 | `group` | 2 | 0.5 |
-| GRP-02 | `children` | 2 | 0.5 |
-| GRP-03 | `push_child` | 3 | 0.5 |
-
-An error made of several failures (a validation run that failed in twelve places, three of ten shards). The tree is bounded in total size (`max_tree`, 1,024 errors including nested children) and depth (`max_depth`, 16); a child whose tree does not fit is refused as a whole, counted, and `push_child` returns `false`.
-
-```rust
-let error = Error::group("3 of 10 shards failed", shard_errors);
-for child in error.children() {
-    eprintln!("  {child:#}");
-}
-```
-
-### `split` and `flatten`
-
-```rust
-impl Error {
-    pub fn split<P: FnMut(&Error) -> bool>(self, predicate: P) -> (Option<Error>, Option<Error>);
-    pub fn flatten(self) -> Vec<Error>;
-}
-```
-
-Since `0.5` (GRP-04, GRP-05). `split` divides a group's direct children into those that match and those that do not; each half keeps the group's message, location, code, severity, exit code, kinds, and sections, and an empty half is `None` (Python's `ExceptionGroup.split`). The matching half is the error itself, so it also keeps its context layers, attachments, and suppressed errors. An error with no children is tested itself. `flatten` returns the leaves of the tree, depth first; the groups themselves are dropped.
-
-```rust
-let (retryable, permanent) = error.split(|e| e.category().is_transient());
-for leaf in permanent.map(Error::flatten).unwrap_or_default() {
-    eprintln!("{leaf:#}");
-}
+let mut error = Error::group("2 of 3 shards failed", [err!("shard 1"), err!("shard 3")]);
+assert_eq!(error.to_string(), "2 of 3 shards failed");
+assert_eq!(error.children().len(), 2);
+assert!(error.push_child(err!("shard 4")));
+assert!(format!("{error:?}").contains("Causes (3):"));
+assert!(err!("x").children().is_empty());
 ```
 
 ### `Errors`
 
-```rust
-#[derive(Default)]
-pub struct Errors { /* private */ }
-impl Errors {
-    pub fn new() -> Errors;
-    pub fn push(&mut self, error: impl Into<Error>);
-    pub fn push_result<T, E: Into<Error>>(&mut self, result: core::result::Result<T, E>) -> Option<T>;
-    pub fn len(&self) -> usize;
-    pub fn is_empty(&self) -> bool;
-    #[track_caller]
-    pub fn finish<M: Display + Debug + Send + Sync + 'static>(self, message: M) -> Result<()>;
-    #[track_caller]
-    pub fn finish_with<T, M: Display + Debug + Send + Sync + 'static>(self, value: T, message: M) -> Result<T>;
-    #[track_caller]
-    pub fn into_error<M: Display + Debug + Send + Sync + 'static>(self, message: M) -> Option<Error>;
-}
-```
-
-Gathers failures, then turns them into one error, or `Ok` when nothing failed. Since `0.5` (GRP-06). `len` is the exact number of failures pushed, also past the budget; the stored list is bounded by `max_tree`.
+[`Errors`] collects the failures of a loop. `push(error)` adds one;
+`push_result(result)` adds the error of a failed result and returns `None`,
+or returns the value. `len()` and `is_empty()` count every failure pushed,
+including any the budget did not keep. `finish(message)` is `Ok(())`, or a
+group of every failure; `into_error(message)` is the group, or `None`.
+`Errors::new()` allocates nothing until the first failure.
 
 ```rust
-use report_err::{err, Context, Errors, Result};
+use report_err::{err, Errors, Result};
 
-fn validate(user: &NewUser) -> Result<()> {
+fn import(rows: &[&str]) -> Result<u32> {
     let mut errors = Errors::new();
-    if user.name.trim().is_empty() { errors.push(err!("name is empty")); }
-    if !user.email.contains('@') { errors.push(err!("email {:?} has no @", user.email)); }
-    let age = errors.push_result(user.age.parse::<u8>().context("age is not a number"));
-    if let Some(age) = age { if age < 13 { errors.push(err!("age {age} is under 13")); } }
-    errors.finish("invalid sign-up form")
+    let mut total = 0;
+    for row in rows {
+        if let Some(value) = errors.push_result(row.parse::<u32>()) {
+            total += value;
+        }
+    }
+    errors.finish("the import failed")?;
+    Ok(total)
 }
+
+assert_eq!(import(&["1", "2"]).unwrap(), 3);
+let error = import(&["1", "x", "y"]).unwrap_err();
+assert_eq!(error.to_string(), "the import failed");
+assert_eq!(error.children().len(), 2);
+
+let mut errors = Errors::new();
+assert!(errors.is_empty());
+errors.push(err!("a"));
+assert_eq!(errors.len(), 1);
+assert!(errors.into_error("all").is_some());
 ```
 
-### `CollectAll`
+### `collect_all`
+
+`collect_all()` ([`CollectAll`], on any iterator of results) consumes the
+whole iterator: `Ok` of the collected values when every item succeeded, else a
+group whose message is `"{failed} of {total} items failed"`, with the failures
+as children in order.
 
 ```rust
-pub trait CollectAll<T, E>: Iterator<Item = core::result::Result<T, E>> {
-    #[track_caller]
-    fn collect_all<B: FromIterator<T>>(self) -> Result<B>;
-}
-impl<I, T, E> CollectAll<T, E> for I where I: Iterator<Item = core::result::Result<T, E>>, E: Into<Error>;
+use report_err::{CollectAll, Result};
+
+let parsed: Result<Vec<u8>> = ["1", "x", "3", "y"].iter().map(|s| s.parse::<u8>()).collect_all();
+let error = parsed.unwrap_err();
+assert_eq!(error.to_string(), "2 of 4 items failed");
+assert_eq!(error.children().len(), 2);
+
+let fine: Result<Vec<u8>> = ["1", "2"].iter().map(|s| s.parse::<u8>()).collect_all();
+assert_eq!(fine.unwrap(), [1, 2]);
 ```
 
-Collects every failure, not only the first. Since `0.5` (GRP-07). Consumes the whole iterator; `Ok(collection)` when every item succeeded, else a group whose message is `"{failed} of {total} items failed"` and whose children are the failures in order (bounded by `max_tree`, counts exact).
+### `split` and `flatten`
+
+`split(predicate)` divides a group's direct children into those that match
+and those that do not; each half keeps the group's message, location, code,
+severity, exit code, kinds, and sections, and an empty half is `None`.
+`flatten()` returns the leaves of the tree, depth first.
 
 ```rust
-use report_err::CollectAll;
+use report_err::{err, Error};
 
-let configs: Vec<Config> = paths.iter().map(|p| load(p)).collect_all()?;
-// on failure: "2 of 9 items failed", with both load errors as children
+let error = Error::group("import failed", [err!("row 1"), err!("row 2"), err!("row 3")]);
+let (kept, rest) = error.split(|e| e.to_string() != "row 2");
+assert_eq!(kept.unwrap().children().len(), 2);
+assert_eq!(rest.unwrap().children().len(), 1);
+
+let inner = Error::group("b", [err!("b1"), err!("b2")]);
+let error = Error::group("all", [err!("a"), inner, err!("c")]);
+let leaves: Vec<String> = error.flatten().iter().map(|e| e.to_string()).collect();
+assert_eq!(leaves, ["a", "b1", "b2", "c"]);
 ```
 
 ## Suppressed errors and cleanup
 
+`suppress(other)` keeps a failure that happened while handling this one (a
+rollback that failed too). It is printed under `Suppressed:` but is not a
+cause: `find`, `code`, and `downcast` ignore it. `suppressed()` is the slice of
+them, in order. Up to 16 are kept by default (`max_suppressed`).
+
+`Context::with_cleanup(cleanup)` runs `cleanup` whatever the result was: when
+both fail, the cleanup's error is suppressed in the main one; when only the
+cleanup fails, its error is the result.
+
 ```rust
-impl Error {
-    pub fn suppress(self, other: impl Into<Error>) -> Error;
-    pub fn suppressed(&self) -> &[Error];
+use report_err::{err, Context};
+
+let error = err!("write failed").suppress(err!("rollback failed"));
+assert_eq!(error.suppressed().len(), 1);
+assert!(format!("{error:?}").contains("Suppressed:"));
+
+let written: Result<(), std::io::Error> = Err(std::io::Error::other("disk full"));
+let error = written.with_cleanup(|| Err(err!("sync failed"))).unwrap_err();
+assert_eq!(error.to_string(), "disk full");
+assert_eq!(error.suppressed()[0].to_string(), "sync failed");
+
+let fine: Result<u8, std::io::Error> = Ok(1);
+assert_eq!(fine.with_cleanup(|| Ok::<(), report_err::Error>(())).unwrap(), 1);
+```
+
+## The trail and backtraces
+
+The trail is the way the error travelled: its origin, every context layer, and
+every `.trace()` point. A `?` that returns an `Error` where an `Error` is
+expected cannot record its line (Rust calls the identity conversion), so
+`trace()`, on an `Error` or through `Context`, records it. `trail()` returns a
+[`Trail`] of [`Step`] values, each with a `location`, a `kind` ([`StepKind`]:
+`Origin`, `Context`, `Trace`), and the `context` added at that step. The first
+4 and the latest 11 points are kept; `Trail::omitted()` counts those dropped
+between.
+
+`backtrace()` is the backtrace captured when the error was created: only at
+the root, only when `RUST_LIB_BACKTRACE` or `RUST_BACKTRACE` turns them on, or
+when `with_backtrace()` forces one. Symbols are resolved only when it is
+printed.
+
+```rust
+use report_err::{err, Context, Result, StepKind};
+
+fn inner() -> Result<()> {
+    Err(err!("disk full"))
+}
+fn outer() -> Result<()> {
+    inner().trace()?;
+    Ok(())
 }
 
-pub fn unraisable(error: Error) -> bool;
+let error = outer().unwrap_err().context("closing");
+let kinds: Vec<StepKind> = error.trail().map(|s| s.kind).collect();
+assert_eq!(kinds, [StepKind::Origin, StepKind::Trace, StepKind::Context]);
+assert_eq!(error.trail().omitted(), 0);
 
-// on Result, through Context:
-fn with_cleanup<F, R>(self, cleanup: F) -> Result<T, Error>
-    where F: FnOnce() -> core::result::Result<(), R>, R: Into<Error>;
+let error = err!("invariant broken").with_backtrace();
+assert!(error.backtrace().is_some());
+assert!(format!("{error:?}").contains("Backtrace:"));
 ```
 
-| Id | Item | Tier | Since |
-|---|---|---|---|
-| SUP-01 | `suppress` | 2 | 0.5 |
-| SUP-02 | `suppressed` | 2 | 0.5 |
-| SUP-03 | `unraisable` | 2 | 0.5 |
-| SUP-04 | `with_cleanup` | 2 | 0.5 |
-
-A suppressed error is a failure that happened while handling another one (Java's `addSuppressed`). It is shown under `Suppressed:` but is not a cause: `find`, `code`, and `downcast` ignore it. Bounded by `max_suppressed` (16), and its tree counts toward `max_tree` and `max_depth` like a child's, so errors cannot nest without bound through `suppress` either.
-
-`with_cleanup` runs the cleanup either way and returns the main error with the cleanup's error suppressed in it when both fail, the cleanup's error when only the cleanup fails, and the main result otherwise.
-
-`unraisable` is for an error with nowhere to go (in `Drop`, in a thread nobody joins): it reports it through define-err's facade as unhandled (the record's `handled` is `false`), and returns `true` when a reporter is installed to receive it. With no reporter installed and `std` on, it writes one guarded, escaped line to standard error (`Error (unraisable): ` and the chain), so the error is never lost silently, and returns `false`.
-
-```rust
-if let Err(error) = tx.apply(batch) {
-    let error = match tx.rollback() {
-        Ok(()) => error,
-        Err(rollback) => error.suppress(rollback),
-    };
-    return Err(error.context("applying batch"));
-}
-
-let written = write_all(&mut file, &data).with_cleanup(|| file.sync_all())?;
-
-impl Drop for Segment {
-    fn drop(&mut self) {
-        if let Err(e) = self.flush() {
-            report_err::unraisable(Error::new(e).context("flushing segment on drop"));
-        }
-    }
-}
-```
-
-## Trace and backtrace
-
-```rust
-impl Error {
-    #[track_caller]
-    pub fn trace(self) -> Error;
-    pub fn trail(&self) -> Trail<'_>;
-    pub fn backtrace(&self) -> Option<&std::backtrace::Backtrace>;     // std
-    pub fn with_backtrace(self) -> Error;                               // std
-}
-
-pub struct Trail<'a> { /* private */ }
-impl<'a> Iterator for Trail<'a> { type Item = Step<'a>; }
-impl Trail<'_> { pub fn omitted(&self) -> u32; }
-
-#[non_exhaustive]
-pub struct Step<'a> {
-    pub location: &'static core::panic::Location<'static>,
-    pub kind: StepKind,
-    pub context: Option<&'a (dyn core::error::Error + 'static)>,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-#[non_exhaustive]
-pub enum StepKind { Origin, Context, Trace }
-```
-
-| Id | Item | Tier | Since |
-|---|---|---|---|
-| TRC-01 | `trace` (and `Context::trace`) | 2 | 0.4 |
-| TRC-02 | `trail`, `Trail`, `Step` | 2 | 0.4 |
-| TRC-03 | `StepKind` | 3 | 0.4 |
-| TRC-04 | `backtrace` | 2 | 0.4 |
-| TRC-05 | `with_backtrace` | 2 | 0.4 |
-
-The **trail** answers "which way did this error travel": the origin, every context layer's location, and every `.trace()` point, in the order they happened. It is cheaper than a backtrace and present in release builds. A `?` that does not change the error type cannot be recorded (Rust calls the identity `From`, which cannot be tracked), so `.trace()` exists to record that line: one store, plus the extras (and the extension block) the first time. Trace points keep the first 4 and the latest 11, with a count of those dropped between (`omitted`).
-
-**Backtraces** are captured only when the root error is created, only when `RUST_LIB_BACKTRACE` or `RUST_BACKTRACE` enables them (std's rules; `RUST_LIB_BACKTRACE=0` turns them off for errors only), or when `with_backtrace` forces one; symbols are resolved only when printed. Context never captures one. Cost [measured on the design machine]: 1.8 ns for the disabled check, about 0.8 us to capture, about 357 us to resolve and print.
-
-```rust
-for step in error.trail() {
-    println!("{:?} at {}", step.kind, step.location);
-}
-// Origin at src/store.rs:88:21
-// Context at src/store.rs:88:30
-// Trace at src/engine.rs:204:41
-// Context at src/main.rs:17:22
-
-let error = err!("invariant broken in compaction").with_backtrace();
-```
-
-## Configuration
-
-### `Limits`
-
-```rust
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[non_exhaustive]
-pub struct Limits {
-    pub max_frames: u32,        // 64        (4 to 4,096)
-    pub max_attachments: u32,   // 32        (0 to 1,024)
-    pub max_sections: u32,      // 32        (0 to 1,024)
-    pub max_suppressed: u32,    // 16        (0 to 1,024)
-    pub max_tree: u32,          // 1,024     (1 to 1,048,576)
-    pub max_depth: u32,         // 16        (1 to 64)
-    pub max_bytes: u32,         // 65,536    (1,024 to 16,777,216)
-    pub max_chain: u32,         // 128       (8 to 4,096)
-    pub max_render: u32,        // 1,048,576 (4,096 to 67,108,864)
-}
-impl Limits {
-    pub const DEFAULT: Limits;
-}
-impl Default for Limits;
-```
-
-Every growable part of an error has a budget, safe for servers by default. Since `0.5` (CFG-01). Change a copy, as with define-err's `RecordLimits`:
-
-| Field | Bounds | At the limit |
-|---|---|---|
-| `max_frames` | context layers per error | keep the innermost 8 and the newest; drop the oldest of the middle; count |
-| `max_attachments`, `max_sections`, `max_suppressed` | per error | refuse the new one; count |
-| `max_tree` | errors in one tree, nested children and suppressed errors included | refuse the child as a whole; count (`Errors::len` stays exact) |
-| `max_depth` | nesting of children and suppressed errors | refuse one that would exceed it; count |
-| `max_bytes` | text and value bytes held by one error's extras (a value's own size, plus the heap bytes of a `String`, `Vec<u8>`, `Box<str>`, or `Box<[u8]>`) | cut text at a character boundary with `...(truncated)`; refuse values; count |
-| `max_chain` | links walked in one chain | stop; print `(chain truncated)` |
-| `max_render` | bytes written by one guarded rendering | stop; print `(report truncated)` |
-
-Trace points are fixed at 15 (the first 4 and the latest 11). Budgets are checked before the allocation or the work; what was dropped is printed under `Omitted:`.
-
-### `configure` and `limits`
-
-```rust
-pub fn configure(limits: Limits) -> core::result::Result<(), ConfigureError>;
-pub fn limits() -> &'static Limits;
-```
-
-| Id | Item | Tier | Since |
-|---|---|---|---|
-| CFG-02 | `configure` | 2 | 0.5 |
-| CFG-03 | `limits` | 3 | 0.5 |
-
-Write once, at the start of `main`, before other threads create errors. Every field is checked against its range first; one bad field refuses the whole value and the defaults stay (fail closed). A second call returns `AlreadyConfigured`. Reading costs one acquire load [est. under 1 ns]; there is no lock anywhere.
-
-```rust
-let mut limits = report_err::Limits::DEFAULT;
-limits.max_frames = 32;
-limits.max_bytes = 16 * 1024;
-report_err::configure(limits)?;
-```
-
-### `configure_catalogs`
-
-```rust
-pub fn configure_catalogs(catalogs: &'static [&'static [define_err::CodeInfo]])
-    -> core::result::Result<(), ConfigureError>;
-```
-
-Optional, write once (a second call returns `AlreadyConfigured` and the first value stays). Lets an explicit code (`coded`, a code-first macro) find its title, severity, category, kinds, and public message through define-err's `catalog::find`. Since `0.4` (CFG-05). One allocation, once; a read is one acquire load and the catalog search.
-
-```rust
-static CATALOGS: &[&[define_err::CodeInfo]] = &[DbError::CATALOG, UserError::CATALOG];
-report_err::configure_catalogs(CATALOGS)?;
-```
-
-### `ConfigureError`
-
-```rust
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[non_exhaustive]
-pub enum ConfigureError {
-    AlreadyConfigured,
-    OutOfRange { field: &'static str, value: u64, min: u64, max: u64 },
-}
-impl Display for ConfigureError;
-impl core::error::Error for ConfigureError;
-```
-
-Since `0.4` (`AlreadyConfigured`, for `configure_catalogs`) and `0.5` (CFG-04). Each message says what to do:
-
-| Variant | `Display` |
-|---|---|
-| `AlreadyConfigured` | `this setting was already configured; set it once, at the start of main, before other threads start` |
-| `OutOfRange` | `max_frames = 2 is outside 4..=4096; choose a value in that range` |
-
-## `main`
+## `main` and exit codes
 
 ### `fn main() -> Result<()>`
 
-Nothing to call: std's `Termination` for `Result<(), E: Debug>` prints `Error: ` followed by the `{:?}` report and exits with code 1, as with anyhow. Since `0.3` (MAIN-01). This path prints raw text; [`ExitReport`](#exitreport) escapes it.
+The standard library prints `Error: ` and the report (`{:?}`) to standard error
+and exits with 1, as with anyhow.
 
-```rust
+```rust,no_run
 fn main() -> report_err::Result<()> {
-    run()
-}
-
-#[tokio::main]
-async fn main() -> report_err::Result<()> {      // any runtime works
-    run().await
+    std::fs::read("app.noml")?;
+    Ok(())
 }
 ```
 
 ### `ExitReport`
 
-```rust
-pub struct ExitReport { /* private */ }
-impl std::process::Termination for ExitReport;
-impl<E: Into<Error>> From<core::result::Result<(), E>> for ExitReport;
-impl From<Error> for ExitReport;
-```
+`ExitReport` is a return type for `main` (feature `std`). On `Err` it writes
+`Error: ` and the report to standard error, with terminal control characters
+escaped and a message's continuation lines indented, so no message can move
+the cursor or fake a block of the report; the report is cut at 1 MiB. Then it
+exits with [`Error::exit_code`](#exit-codes). A closed standard error is
+ignored. It is made with `From` from a `Result<(), E>` or an `Error`.
 
-**std**. Since `0.4` (MAIN-02). On `Err`, writes `Error: ` and the guarded, bounded `{:?}` report to standard error, escaping terminal control characters (C0 except newline and tab, DEL, C1) as `\u{..}` and indenting continuation lines, so a message cannot fake a new report block or move the cursor; a closed or broken standard error is ignored. Then exits with the error's [exit code](#exit_code-and-with_exit_code). `Ok` exits 0.
+```rust,no_run
+fn app() -> report_err::Result<()> {
+    Ok(())
+}
 
-```rust
 fn main() -> report_err::ExitReport {
-    run().into()
+    app().into()
 }
-
-#[tokio::main]
-async fn main() -> report_err::ExitReport {
-    run().await.into()
-}
-```
-
-### `exit_code` and `with_exit_code`
-
-```rust
-impl Error {
-    pub fn exit_code(&self) -> u8;
-    pub fn with_exit_code(self, code: u8) -> Error;
-}
-```
-
-Since `0.4` (MAIN-03). The exit code, in this order:
-
-1. an explicit `with_exit_code(n)` (`0` is not a failure code and becomes 1);
-2. 101 for an error made by a panic (`boundary`, `from_panic`), the code Rust uses for a panicking `main`;
-3. the category's exit code (define-err's `Category::exit_code`: sysexits values, 64 usage, 65 data, 66 no input, 69 unavailable, 70 software, 73 cannot create, 74 I/O, 75 temporary failure, 77 permission, 78 configuration, 130 cancelled), when the category is known from a code, a catalog, or an `io::Error` root;
-4. otherwise 1, what anyhow users get today.
-
-```rust
-let error = err!("usage: tool <file>").with_exit_code(64);
-assert_eq!(error.exit_code(), 64);
 ```
 
 ### `run`
 
-```rust
-pub fn run<F: FnOnce() -> Result<()> + UnwindSafe>(app: F) -> ExitReport;
-```
+`run(app)` is [`boundary`](#panics) and `ExitReport` in one call: a panic in
+`app` becomes a report and exit code 101, when panics unwind.
 
-**std**. `boundary` and `ExitReport` in one call: a panic in `app` becomes a report and exit code 101 when panics unwind. Since `0.5` (MAIN-04).
-
-```rust
+```rust,no_run
 fn main() -> report_err::ExitReport {
     report_err::run(|| {
-        let config = load_config("app.noml")?;
-        serve(config)
+        println!("serving");
+        Ok(())
     })
 }
 ```
 
-## Panic boundary
+### Exit codes
+
+`exit_code()` is the code `ExitReport` exits with: `with_exit_code`'s value;
+else 101 for a panic; else the category's exit code, when a code, a catalog,
+or an `io::Error` root says what the category is; otherwise 1.
+`with_exit_code(code)` sets it; 0 is not a failure code and becomes 1.
 
 ```rust
-pub fn boundary<T, F: FnOnce() -> Result<T> + UnwindSafe>(f: F) -> Result<T>;   // std
-pub const PANICS_CAUGHT: bool;
-impl Error {
-    #[track_caller]
-    pub fn from_panic(payload: Box<dyn core::any::Any + Send + 'static>) -> Error;
-}
+let error = report_err::err!("usage: tool <file>");
+assert_eq!(error.exit_code(), 1);
+let error = error.with_exit_code(64);
+assert_eq!(error.exit_code(), 64);
+assert_eq!(report_err::err!("x").with_exit_code(0).exit_code(), 1);
+
+let missing = report_err::Error::new(std::io::Error::from(std::io::ErrorKind::NotFound));
+assert_eq!(missing.exit_code(), report_err::Category::NotFound.exit_code());
 ```
 
-| Id | Item | Tier | Since |
-|---|---|---|---|
-| BND-01 | `boundary` | 1 | 0.5 |
-| BND-02 | `PANICS_CAUGHT` | 2 | 0.5 |
-| BND-03 | `Error::from_panic` | 3 | 0.5 |
+## Panics
 
-`boundary` calls `f` inside `catch_unwind`. A caught panic becomes an error whose root is the panic message (or `panicked with a non-string payload`), with `is_panic`, `Kinds::PANIC`, category `Internal`, exit code 101, and the location of the `boundary` call. Std's panic hook still runs first (report-err never installs one). The closure must be `UnwindSafe`, as std requires; wrap state you have checked in `AssertUnwindSafe`.
+`boundary(f)` runs `f` and turns a panic in it into an `Error` (feature
+`std`): the panic message is the root, `is_panic()` is true, the category is
+`Internal`, the severity `FATAL`, and the exit code 101. It catches a panic
+only when panics unwind; under `panic = "abort"` the process aborts at the
+panic. `PANICS_CAUGHT` says which applies to this build. `f` must be
+`UnwindSafe`; wrap a closure that borrows mutable state in
+`std::panic::AssertUnwindSafe`.
 
-**Under `panic = "abort"` nothing is caught**: the process aborts at the panic, as `catch_unwind` documents. The release profile of most of this portfolio's applications is `panic = "abort"`, so there `boundary` is a plain call. `PANICS_CAUGHT` (`cfg!(panic = "unwind")`) says which applies. Cost with no panic [est.]: under 2 ns over a plain call.
-
-`from_panic` turns a `JoinHandle::join` or `catch_unwind` payload into an error. A payload whose own `Drop` panics is dropped inside a guard, and so is the payload of that panic, up to four times; one whose drops keep panicking is leaked instead of propagated.
+`Error::from_panic(payload)` makes the same error from a payload you caught
+yourself (`std::panic::catch_unwind`, `JoinHandle::join`).
 
 ```rust
-let output = report_err::boundary(|| plugin.render(&page))
-    .context("plugin `gallery` failed")?;
+let caught = report_err::boundary(|| -> report_err::Result<u8> { panic!("plugin bug") });
+if report_err::PANICS_CAUGHT {
+    let error = caught.unwrap_err();
+    assert!(error.is_panic());
+    assert_eq!(error.to_string(), "plugin bug");
+    assert_eq!(error.exit_code(), 101);
+}
+assert_eq!(report_err::boundary(|| Ok(7)).unwrap(), 7);
 
-let total = worker.join().map_err(Error::from_panic)??;
+let payload = std::thread::spawn(|| panic!("worker died")).join().unwrap_err();
+let error = report_err::Error::from_panic(payload);
+assert_eq!(error.to_string(), "worker died");
+assert!(!report_err::err!("x").is_panic());
 ```
 
 ## Reporting
 
 ### `report` and `is_reported`
 
-```rust
-impl Error {
-    #[track_caller]
-    pub fn report(&self) -> bool;
-    pub fn is_reported(&self) -> bool;
-}
-```
-
-| Id | Method | Tier | Since |
-|---|---|---|---|
-| HOOK-02 | `report` | 2 | 0.5 |
-| HOOK-03 | `is_reported` | 2 | 0.5 |
-
-Hands the error to define-err's reporting facade, once: the first call sets an atomic flag and returns `true`, later calls (from any thread, on the same error) return `false` and do nothing, so outer layers never report twice. With no reporter installed the cost is the flag and one load, and nothing is allocated. With one installed, the reporter receives an event carrying the error's `ErrorRecord` (define-err's `report_record`), so it sees every context layer, the sections, the trail, and the code, severity, category, and kinds resolved [above](#codes-severity-category-kinds); messages are written through the guarded renderer, so a reporter never calls a `Display` unguarded. Errors with `Kinds::SECURITY` are reported like every other: nothing in report-err keeps an error local.
-
-Report at boundaries (a request handler, a job runner, `main`), not at every `?`.
+`report()` hands the error to define-err's reporting facade, once: the first
+call, from any thread, returns `true`; later calls return `false` and do
+nothing, so outer layers never report it twice. When a reporter is installed
+(define-err's `set_reporter`) it receives the error's [`record`](#record).
+With none, the cost is the flag and one load. `is_reported()` says whether
+`report` has run.
 
 ```rust
-if let Err(error) = handle(req) {
-    error.report();
-    return problem_response(&error);       // the render library builds it from code and category
-}
+let error = report_err::err!("request failed");
+assert!(!error.is_reported());
+assert!(error.report());
+assert!(!error.report());
+assert!(error.is_reported());
 ```
 
 ### `record`
 
-```rust
-impl Error {
-    pub fn record(&self) -> define_err::ErrorRecord;
-}
-```
+`record()` is an owned, size-capped [`ErrorRecord`] (define-err's), for
+anything that outlives the error: a queue, a crash ring, another process. It
+holds the chain, with each message written through the guarded renderer; the
+code, severity, category, kinds, and public message; the sections and the
+creation hook's fields; the counts of children and suppressed errors; the
+trail; and the backtrace text when one was captured.
 
-An owned, size-capped snapshot of the error for anything that outlives it: queued listeners, a crash ring, a message to another process or node. Since `0.5` (HOOK-04). One chain entry per link (every context layer, with type name `context`, then the root and its sources, with their codes and type names), each message written through the guarded renderer; the resolved code, severity, category, kinds, and public message (a variant's own `#[public]` text when the probe carries it); the sections (as `note`, `warning`, `suggestion` fields), the hook's fields, and the counts of `children` and `suppressed`; the trail (created, context, converted for `.trace()`, reported); and the backtrace text when one was captured. Within define-err's `RecordLimits`. An `Error` itself never crosses a process boundary (it holds trait objects and locations of one binary); its record does.
-
 ```rust
+use report_err::Context;
+
+let error = std::fs::read("no/such/file").context("loading").unwrap_err();
 let record = error.record();
-queue.push(record);                         // Send + Sync + Clone
+assert_eq!(record.chain.len(), 2);
+assert_eq!(record.chain[0].message, "loading");
+assert!(record.handled);
 ```
 
-### `info`
+### `report_unhandled`
+
+`report_unhandled(error)` reports an error that has nowhere to go (in a
+`Drop`, in a thread nobody joins) as unhandled, and returns `true` when a
+reporter received it. With no reporter installed and `std` on, it writes one
+guarded, escaped line to standard error instead, starting
+`Error (unhandled): `, so the error is never lost silently.
 
 ```rust
-impl Error {
-    #[track_caller]
-    pub fn from_info<E>(error: E) -> Error where E: define_err::ErrorInfo + Send + Sync + 'static;
-    pub fn info(&self) -> Option<&dyn define_err::ErrorInfo>;
+struct Segment;
+
+impl Drop for Segment {
+    fn drop(&mut self) {
+        let flushed: Result<(), report_err::Error> = Err(report_err::err!("disk full"));
+        if let Err(error) = flushed {
+            report_err::report_unhandled(error.context("flushing a segment on drop"));
+        }
+    }
 }
-```
 
-| Id | Item | Tier | Since |
-|---|---|---|---|
-| ERR-18 | `from_info` | 3 | 0.4 |
-| HOOK-05 | `info` | 3 | 0.4 |
-
-`from_info` creates an error like `Error::new` and keeps the root reachable as `&dyn ErrorInfo`, so per-value metadata the identity probe cannot carry (`retry_after`, `#[location]` fields) survives. `info` returns it, or `None` for an error built any other way.
-
-```rust
-let error = Error::from_info(DbError::Busy { wait: Duration::from_millis(250) });
-if let Some(after) = error.info().and_then(|i| i.retry_after()) {
-    sleep(after);
-}
+drop(Segment);
 ```
 
 ### The creation hook
 
-Installed with define-err's `set_creation_hook`; report-err calls the hook once for every `Error` it creates (not for context layers). Since `0.5` (HOOK-01). The hook receives the origin location, the explicit code, and the root's type name, and may add fields (shown under `Fields:` and kept in the record) and kinds. report-err owns the guards: a hook that creates an `Error` on the same thread is not called again for it (with `std`); a hook that panics leaves the field `creation_hook = "panicked"` and the error is still created (with `std` and unwinding). Without `std` the hook's contract forbids both. At most 32 fields are kept, each charged against `max_bytes`. With no hook installed the cost is one load [est. under 1 ns].
+A hook installed with define-err's `set_creation_hook` is called once for
+every `Error` report-err creates (not for context layers). It receives the
+location, the explicit code, and the root's type name, and may add fields
+(printed under `Fields:` and kept in the record) and kinds. report-err guards
+it: a hook that creates an `Error` itself is not called again for that one,
+and a hook that panics leaves the field `creation_hook = "panicked"` (both
+with `std`). With no hook installed the cost is one load.
 
 ```rust
 use define_err::{Annotate, CreationHook, CreationInfo};
@@ -1195,188 +959,176 @@ use define_err::{Annotate, CreationHook, CreationInfo};
 struct RequestScope;
 impl CreationHook for RequestScope {
     fn on_create(&self, _info: &CreationInfo<'_>, out: &mut dyn Annotate) {
-        if let Some(id) = current_request_id() {
-            out.field("request_id", &id);
-        }
+        out.field("request_id", &42);
     }
 }
 
 static SCOPE: RequestScope = RequestScope;
-define_err::set_creation_hook(&SCOPE)?;
+define_err::set_creation_hook(&SCOPE).unwrap();
+let error = report_err::err!("x");
+assert!(format!("{error:?}").contains("request_id"));
+```
+
+## Limits
+
+Everything that grows has a budget. [`Limits`] holds them, `Limits::DEFAULT`
+the defaults; `configure(limits)` sets them once per process, at the start of
+`main`, and `limits()` reads the ones in force.
+
+| Field | Default | Range | Bounds |
+|---|---|---|---|
+| `max_frames` | 64 | 4 to 4,096 | context layers per error; past it the oldest above the innermost eight is dropped and counted |
+| `max_attachments` | 32 | 0 to 1,024 | attachments per error |
+| `max_sections` | 32 | 0 to 1,024 | sections per error |
+| `max_suppressed` | 16 | 0 to 1,024 | suppressed errors per error |
+| `max_tree` | 1,024 | 1 to 1,048,576 | errors in one tree, children and suppressed errors included |
+| `max_depth` | 16 | 1 to 64 | nesting of children and suppressed errors |
+| `max_bytes` | 65,536 | 1,024 to 16,777,216 | text and value bytes one error's extras hold |
+| `max_chain` | 128 | 8 to 4,096 | links walked in one chain; also stops a `source()` that never ends |
+| `max_render` | 1,048,576 | 4,096 to 67,108,864 | bytes one guarded rendering writes |
+
+`configure` returns `ConfigureError::OutOfRange` for a value outside its range
+(nothing is changed) and `ConfigureError::AlreadyConfigured` on a second call.
+
+```rust
+use report_err::{configure, limits, ConfigureError, Limits};
+
+let mut wanted = Limits::DEFAULT;
+wanted.max_frames = 32;
+assert!(configure(wanted).is_ok());
+assert_eq!(limits().max_frames, 32);
+assert_eq!(configure(wanted), Err(ConfigureError::AlreadyConfigured));
+
+```
+
+A refused value is checked before anything is set, so the first good call
+still works:
+
+```rust
+use report_err::{configure, ConfigureError, Limits};
+
+let mut limits = Limits::DEFAULT;
+limits.max_depth = 0;
+let refused = configure(limits).unwrap_err();
+assert!(matches!(refused, ConfigureError::OutOfRange { field: "max_depth", value: 0, min: 1, max: 64 }));
+assert_eq!(refused.to_string(), "max_depth = 0 is outside 1..=64; choose a value in that range");
+
+limits.max_depth = 8;
+assert!(configure(limits).is_ok());
 ```
 
 ## Standard-library interop
 
+`From<Error>` is implemented for `Box<dyn Error + Send + Sync>`,
+`Box<dyn Error + Send>`, and `Box<dyn Error>`, so `?` and `.into()` give code
+that wants a boxed standard error the same `Display` and the same `source()`
+chain, in one allocation however many layers there are.
+`Error::from_boxed(boxed)` goes back: a box made from an `Error` gives the
+original `Error` back; any other box becomes the root. `?` does not convert a
+`Box<dyn Error + Send + Sync>` by itself (as with anyhow), because the box is
+not itself an `Error` type; use `from_boxed`.
+
 ```rust
-impl Error {
-    pub fn into_std(self) -> Box<dyn core::error::Error + Send + Sync + 'static>;
-    #[track_caller]
-    pub fn from_boxed(error: Box<dyn core::error::Error + Send + Sync + 'static>) -> Error;
-}
-impl From<Error> for Box<dyn core::error::Error + Send + Sync + 'static>;
-impl From<Error> for Box<dyn core::error::Error + Send + 'static>;
-impl From<Error> for Box<dyn core::error::Error + 'static>;
+let error = report_err::Error::msg("disk full").context("saving");
+let boxed: Box<dyn std::error::Error + Send + Sync> = error.into();
+assert_eq!(boxed.to_string(), "saving");
+assert_eq!(boxed.source().map(|s| s.to_string()).as_deref(), Some("disk full"));
+
+let back = report_err::Error::from_boxed(boxed);
+assert_eq!(format!("{back:#}"), "saving: disk full");
+
+let foreign: Box<dyn std::error::Error + Send + Sync> = Box::new(std::fmt::Error);
+let error = report_err::Error::from_boxed(foreign);
+assert!(error.root_cause().is::<std::fmt::Error>());
 ```
 
-| Id | Item | Tier | Since |
-|---|---|---|---|
-| STD-01 | `into_std` | 3 | 0.3 |
-| STD-02 | `From<Error> for Box<dyn Error ...>` | 3 | 0.3 |
-| STD-03 | `from_boxed` | 3 | 0.3 |
+## Testing helpers
 
-`into_std` gives an owned standard error with the same `Display` and the same `source()` chain: one allocation in all, however many layers there are. `from_boxed` takes a boxed error back; a box made by `into_std` returns the original `Error` unchanged (no double wrapping). Any other box becomes the root: `downcast_ref::<Box<dyn Error + Send + Sync>>()` answers with it, and its concrete error is the root link of `chain()` and of the `source()` walk, so `root_cause().downcast_ref::<T>()` finds it (as will [`find`](#find-find_all-find_in_suppressed) in `0.5`). `err!(boxed)` does the same.
+With the `testing` feature, `report_err::testing` has three assertions that
+panic with the report when they fail:
 
-```rust
-let boxed: Box<dyn std::error::Error + Send + Sync> = error.into_std();
-library_that_wants_a_box(boxed)?;
-
-let error = Error::from_boxed(plugin_result.unwrap_err());
-```
-
-## `render` and `RenderStyle`
+| Function | Passes when |
+|---|---|
+| `assert_chain_contains(&error, text)` | some link of the chain contains `text` |
+| `assert_code(&error, code)` | the error's code is `code` |
+| `assert_section(&error, kind, text)` | a section of `kind` contains `text` |
 
 ```rust
-impl Error {
-    pub fn render(&self, out: &mut dyn core::fmt::Write, style: RenderStyle) -> core::fmt::Result;
-}
+use report_err::{testing, Context, SectionKind};
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[non_exhaustive]
-pub enum RenderStyle { Message, Chain, Report }
-```
+let error = std::fs::read("missing.noml").context("loading missing.noml").unwrap_err();
+testing::assert_chain_contains(&error, "missing.noml");
 
-The guarded, bounded form of `{}` (`Message`), `{:#}` (`Chain`), and `{:?}` (`Report`), for code that must not fail while it prints an error (a panic hook, a crash path). Since `0.5` (STD-04). Returns `Err` only when `out` itself fails.
+let code = define_err::code!("APP", 3);
+testing::assert_code(&report_err::err!(code, "x"), code);
 
-```rust
-let mut text = String::new();
-error.render(&mut text, RenderStyle::Report)?;
-```
-
-## `testing`
-
-Feature `testing` (works without `std`). Since `0.5` (TST-01).
-
-```rust
-pub mod testing {
-    #[track_caller] pub fn assert_chain_contains(error: &Error, text: &str);
-    #[track_caller] pub fn assert_code(error: &Error, code: Code);
-    #[track_caller] pub fn assert_section(error: &Error, kind: SectionKind, text: &str);
-}
-```
-
-Each panics with the full report when the check fails, so a failing test shows the whole error.
-
-```rust
-#[test]
-fn test_load_missing_file_reports_path() -> report_err::Result<()> {
-    let error = load("missing.noml").unwrap_err();
-    report_err::testing::assert_chain_contains(&error, "missing.noml");
-    report_err::testing::assert_code(&error, ConfigError::MISSING);
-    Ok(())
-}
+let error = report_err::err!("x").suggestion("run the migration");
+testing::assert_section(&error, SectionKind::Suggestion, "migration");
 ```
 
 ## Crate root
 
+| Item | What it is |
+|---|---|
+| `VERSION` | the crate's version, `env!("CARGO_PKG_VERSION")` |
+| `Result<T, E = Error>` | the result type ([`Result` and `Ok`](#result-and-ok)) |
+| `Ok(value)` | `Ok` with the error type fixed |
+| `prelude` | the Tier 1 imports ([The prelude](#the-prelude)) |
+| `PANICS_CAUGHT` | whether `boundary` catches panics in this build |
+| `Code`, `Severity`, `Category`, `Kinds` | re-exported from define-err |
+
 ```rust
-pub const VERSION: &str;
-pub mod prelude;
+assert_eq!(report_err::VERSION, env!("CARGO_PKG_VERSION"));
+assert_eq!(report_err::PANICS_CAUGHT, cfg!(panic = "unwind"));
 ```
 
-`VERSION` is the crate version, from Cargo. Since `0.1` (ROOT-01). The [prelude](#the-prelude) since `0.3` (ROOT-03).
+## What can fail
 
-```rust
-println!("report-err {}", report_err::VERSION);
-```
+report-err never panics on its own account, and only one function returns an
+error type of its own:
 
-## Item index
+| Item | Fails with |
+|---|---|
+| `configure`, `configure_catalogs` | [`ConfigureError`]: `AlreadyConfigured` on a second call; `OutOfRange { field, value, min, max }` for a budget outside its range (`configure` only) |
+| `render` | `fmt::Error`, only when the writer fails |
+| `downcast` | the error itself, unchanged, when the root is not a `T` |
+| `push_child` | `false` when the child's tree does not fit; the child is counted under `Omitted:` |
 
-| Id | Item | Tier | Grade | Since |
-|---|---|---|---|---|
-| ROOT-01 | `VERSION` | 3 | P0 | 0.1 |
-| ROOT-02 | `Result` | 1 | P0 | 0.3 |
-| ROOT-03 | `prelude` | 1 | P0 | 0.3 |
-| ROOT-04 | `Ok` | 1 | P2 | 0.4 |
-| ERR-01 | `Error` | 1 | P0 | 0.3 |
-| ERR-02 | `From<E> for Error` | 1 | P0 | 0.3 |
-| ERR-03 | `Error::new` | 1 | P0 | 0.3 |
-| ERR-04 | `Error::msg` | 1 | P0 | 0.3 |
-| ERR-05 | `Error::context` | 1 | P0 | 0.3 |
-| ERR-06 | `downcast_ref` | 1 | P0 | 0.3 |
-| ERR-07 | `downcast_mut` | 2 | P1 | 0.3 |
-| ERR-08 | `downcast` | 2 | P1 | 0.3 |
-| ERR-09 | `is` | 1 | P1 | 0.3 |
-| ERR-10 | `location` | 1 | P1 | 0.3 |
-| ERR-11 | `code` | 1 | P0 | 0.4 |
-| ERR-12 | `coded` | 1 | P0 | 0.4 |
-| ERR-13 | `severity`, `category`, `kinds` | 2 | P1 | 0.4 |
-| ERR-14 | `with_severity`, `with_kind` | 2 | P2 | 0.4 |
-| ERR-15 | `public_message` | 2 | P1 | 0.4 |
-| ERR-16 | `is_panic` | 2 | P2 | 0.5 |
-| ERR-17 | `Display`, `Debug` | 1 | P0 | 0.3 |
-| ERR-18 | `from_info` | 3 | P2 | 0.4 |
-| ERR-19 | `Deref`, `DerefMut`, `AsRef` to `dyn Error` | 1 | P0 | 0.3 |
-| CTX-01 | `Context::context`, `with_context` on `Result` | 1 | P0 | 0.3 |
-| CTX-02 | the same on `Option` | 1 | P0 | 0.3 |
-| CTX-03 | `Context::coded` | 1 | P0 | 0.4 |
-| CTX-04 | `note`, `warning`, `suggestion` (and `with_`) | 1 | P1 | 0.4 |
-| CTX-05 | `Context::attach` | 2 | P1 | 0.4 |
-| CTX-06 | `Context::trace` | 2 | P1 | 0.4 |
-| CTX-07 | `Context::with_cleanup` | 2 | P2 | 0.5 |
-| MAC-01 | `err!`, `format_err!` | 1 | P0 | 0.3 |
-| MAC-02 | `bail!` | 1 | P0 | 0.3 |
-| MAC-03 | `ensure!` | 1 | P0 | 0.3 |
-| MAC-04 | code-first arms | 1 | P0 | 0.4 |
-| MAC-05 | `ensure!` operand values | 1 | P3 | after 1.0 |
-| CHN-01 | `chain`, `Chain` | 1 | P0 | 0.3 |
-| CHN-02 | `root_cause` | 1 | P1 | 0.3 |
-| CHN-03 | `find` | 2 | P1 | 0.5 |
-| CHN-04 | `find_all` | 3 | P2 | 0.5 |
-| CHN-05 | `find_in_suppressed` | 3 | P2 | 0.5 |
-| CHN-06 | `Chain::rev` | 3 | P2 | 0.5 |
-| ATT-01 | `attach` | 2 | P1 | 0.4 |
-| ATT-02 | `attachment` | 2 | P1 | 0.4 |
-| ATT-03 | `attachments` | 3 | P2 | 0.4 |
-| ATT-04 | `attach_display` | 2 | P2 | 0.4 |
-| ATT-05 | `note`, `warning`, `suggestion` on `Error` | 1 | P1 | 0.4 |
-| ATT-06 | `sections`, `Section` | 3 | P1 | 0.4 |
-| ATT-07 | `SectionKind` | 3 | P1 | 0.4 |
-| GRP-01 | `Error::group` | 2 | P1 | 0.5 |
-| GRP-02 | `children` | 2 | P1 | 0.5 |
-| GRP-03 | `push_child` | 3 | P2 | 0.5 |
-| GRP-04 | `split` | 3 | P2 | 0.5 |
-| GRP-05 | `flatten` | 3 | P2 | 0.5 |
-| GRP-06 | `Errors` | 2 | P1 | 0.5 |
-| GRP-07 | `CollectAll` | 2 | P1 | 0.5 |
-| SUP-01 | `suppress` | 2 | P1 | 0.5 |
-| SUP-02 | `suppressed` | 2 | P1 | 0.5 |
-| SUP-03 | `unraisable` | 2 | P2 | 0.5 |
-| SUP-04 | `with_cleanup` | 2 | P2 | 0.5 |
-| TRC-01 | `trace` | 2 | P1 | 0.4 |
-| TRC-02 | `trail`, `Trail`, `Step` | 2 | P1 | 0.4 |
-| TRC-03 | `StepKind` | 3 | P1 | 0.4 |
-| TRC-04 | `backtrace` | 2 | P1 | 0.4 |
-| TRC-05 | `with_backtrace` | 2 | P2 | 0.4 |
-| CFG-01 | `Limits` | 2 | P1 | 0.5 |
-| CFG-02 | `configure` | 2 | P1 | 0.5 |
-| CFG-03 | `limits` | 3 | P2 | 0.5 |
-| CFG-04 | `ConfigureError` | 2 | P1 | 0.5 |
-| CFG-05 | `configure_catalogs` | 2 | P2 | 0.4 |
-| MAIN-01 | `fn main() -> Result<()>` | 1 | P0 | 0.3 |
-| MAIN-02 | `ExitReport` | 1 | P1 | 0.4 |
-| MAIN-03 | `exit_code`, `with_exit_code` | 2 | P2 | 0.4 |
-| MAIN-04 | `run` | 1 | P2 | 0.5 |
-| BND-01 | `boundary` | 1 | P1 | 0.5 |
-| BND-02 | `PANICS_CAUGHT` | 2 | P1 | 0.5 |
-| BND-03 | `Error::from_panic` | 3 | P2 | 0.5 |
-| HOOK-01 | the creation hook (define-err's slot) | 3 | P1 | 0.5 |
-| HOOK-02 | `report` | 2 | P1 | 0.5 |
-| HOOK-03 | `is_reported` | 2 | P2 | 0.5 |
-| HOOK-04 | `record` | 2 | P1 | 0.5 |
-| HOOK-05 | `info` | 3 | P2 | 0.4 |
-| STD-01 | `into_std` | 3 | P1 | 0.3 |
-| STD-02 | `From<Error> for Box<dyn Error ...>` | 3 | P1 | 0.3 |
-| STD-03 | `from_boxed` | 3 | P1 | 0.3 |
-| STD-04 | `render`, `RenderStyle` | 3 | P2 | 0.5 |
-| TST-01 | `testing` assertions | 2 | P2 | 0.5 |
-| TST-02 | `testing::CountingHook` | 3 | P3 | after 1.0 |
+`ConfigureError` is `#[non_exhaustive]`, as are `RenderStyle`, `SectionKind`,
+`StepKind`, and `Step`.
+
+## Examples in the repository
+
+| Example | Shows |
+|---|---|
+| `quick_start` | context, `bail!`, `ensure!`, and the report |
+| `migrate_from_anyhow` | anyhow code with only the crate name changed |
+| `codes` | codes, catalogs, and exit codes |
+| `attachments` | attachments and sections |
+| `inspect` | the chain, downcasting, and searching a tree |
+| `exit_report` | `ExitReport` and exit codes |
+| `panic_boundary` | `boundary` and `run` |
+
+Run one with `cargo run --example <name>`.
+
+[`Attachments`]: https://docs.rs/report-err/latest/report_err/struct.Attachments.html
+[`Category`]: https://docs.rs/report-err/latest/report_err/enum.Category.html
+[`Chain`]: https://docs.rs/report-err/latest/report_err/struct.Chain.html
+[`Code`]: https://docs.rs/report-err/latest/report_err/struct.Code.html
+[`CollectAll`]: https://docs.rs/report-err/latest/report_err/trait.CollectAll.html
+[`ConfigureError`]: https://docs.rs/report-err/latest/report_err/enum.ConfigureError.html
+[`ErrorRecord`]: https://docs.rs/define-err/latest/define_err/struct.ErrorRecord.html
+[`Errors`]: https://docs.rs/report-err/latest/report_err/struct.Errors.html
+[`FindAll`]: https://docs.rs/report-err/latest/report_err/struct.FindAll.html
+[`Kinds`]: https://docs.rs/report-err/latest/report_err/struct.Kinds.html
+[`Limits`]: https://docs.rs/report-err/latest/report_err/struct.Limits.html
+[`RenderStyle`]: https://docs.rs/report-err/latest/report_err/enum.RenderStyle.html
+[`Section`]: https://docs.rs/report-err/latest/report_err/struct.Section.html
+[`SectionKind`]: https://docs.rs/report-err/latest/report_err/enum.SectionKind.html
+[`Sections`]: https://docs.rs/report-err/latest/report_err/struct.Sections.html
+[`Severity`]: https://docs.rs/report-err/latest/report_err/struct.Severity.html
+[`Step`]: https://docs.rs/report-err/latest/report_err/struct.Step.html
+[`StepKind`]: https://docs.rs/report-err/latest/report_err/enum.StepKind.html
+[`Trail`]: https://docs.rs/report-err/latest/report_err/struct.Trail.html
+
+<sub>Copyright &copy; 2026 <strong>James Gober</strong>.</sub>

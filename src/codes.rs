@@ -168,13 +168,13 @@ impl Error {
         self.known_category().unwrap_or(Category::Unknown)
     }
 
-    /// The error's kinds: those added with [`with_kind`](Error::with_kind)
+    /// The error's kinds: those added with [`with_kinds`](Error::with_kinds)
     /// and those of its code; `Kinds::ERROR` when there are none.
     ///
     /// ```
     /// use report_err::Kinds;
     ///
-    /// let error = report_err::err!("x").with_kind(Kinds::SECURITY);
+    /// let error = report_err::err!("x").with_kinds(Kinds::SECURITY);
     /// assert!(error.kinds().contains(Kinds::SECURITY));
     /// assert_eq!(report_err::err!("y").kinds(), Kinds::ERROR);
     /// ```
@@ -205,15 +205,15 @@ impl Error {
         self
     }
 
-    /// Adds kinds to the error (they are combined with OR).
+    /// Adds every kind in `kinds` to the error's own (combined with OR).
     ///
     /// ```
     /// use report_err::Kinds;
     ///
-    /// let error = report_err::err!("x").with_kind(Kinds::AUDIT).with_kind(Kinds::USER);
+    /// let error = report_err::err!("x").with_kinds(Kinds::AUDIT).with_kinds(Kinds::USER);
     /// assert!(error.kinds().contains(Kinds::AUDIT | Kinds::USER));
     /// ```
-    pub fn with_kind(mut self, kinds: Kinds) -> Error {
+    pub fn with_kinds(mut self, kinds: Kinds) -> Error {
         let extras = self.raw.extras_mut();
         extras.kinds |= kinds;
         self

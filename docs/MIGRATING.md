@@ -29,6 +29,7 @@ Moving from anyhow, eyre, or snafu's `Whatever` to report-err. For anyhow it is 
   - [A worked migration: kraken](#a-worked-migration-kraken)
 - [From eyre and color-eyre](#from-eyre-and-color-eyre)
 - [From snafu's `Whatever`](#from-snafus-whatever)
+- [From report-err 0.7 to 0.8](#from-report-err-07-to-08)
 
 ## From anyhow
 
@@ -61,7 +62,7 @@ s/\buse anyhow::/use report_err::/g
 s/\banyhow!(/err!(/g      (only in files that imported the macro by name)
 ```
 
-and in `Cargo.toml`, `anyhow = "..."` becomes `report-err = "0.7"`.
+and in `Cargo.toml`, `anyhow = "..."` becomes `report-err = "0.8"`.
 
 ### What behaves differently
 
@@ -94,8 +95,30 @@ Result: the pass above changed 2 manifest lines and 36 source lines; no line nee
 
 ## From eyre and color-eyre
 
-`eyre::Report` maps to `Error`, `eyre::Result` to `Result`, `eyre!` to `err!`, `WrapErr::wrap_err` to `context`, `wrap_err_with` to `with_context`. color-eyre's `Section` methods (`note`, `warning`, `suggestion`, and their `with_` forms) have the same names on `Context` and `Error` from `0.4`. eyre's `set_hook`/`EyreHandler` has no equivalent: formatting is fixed, colour belongs to the render library, and scope data at creation goes through define-err's creation hook (`0.5`).
+`eyre::Report` maps to `Error`, `eyre::Result` to `Result`, `eyre!` to `err!`, `WrapErr::wrap_err` to `context`, `wrap_err_with` to `with_context`. color-eyre's `Section` methods (`note`, `warning`, `suggestion`) have the same names on `Context` and `Error`, and their `with_` forms on `Context`. eyre's `set_hook`/`EyreHandler` has no equivalent: formatting is fixed, colour belongs to the render library, and scope data at creation goes through define-err's creation hook (`0.5`).
 
 ## From snafu's `Whatever`
 
 `Whatever` maps to `Error`, `whatever!` to `err!` (or `bail!` where it returns), `ensure_whatever!` to `ensure!`, and `whatever_context` to `context`. snafu's typed errors move to define-err, not to report-err: report-err is for the application layer, where errors are carried and reported rather than matched on.
+
+## From report-err 0.7 to 0.8
+
+0.8 removed the methods that only repeated another way of doing the same thing, gave two items plainer names, and moved to define-err 0.9. Each change is a compile error at the old name, never a change of behaviour behind the same name. Run on a branch and review the diff:
+
+```text
+s/\breport_err::unraisable\b/report_err::report_unhandled/g
+s/\bunraisable(/report_unhandled(/g
+s/\.with_kind(/.with_kinds(/g
+```
+
+| 0.7 | 0.8 | Note |
+|---|---|---|
+| `unraisable(error)` | `report_unhandled(error)` | Without a reporter, the line on standard error now starts `Error (unhandled): ` instead of `Error (unraisable): `. |
+| `error.with_kind(kinds)` | `error.with_kinds(kinds)` | It always took a `Kinds` set; the name now says so. |
+| `error.with_note(\|\| text)` on an `Error` | `error.note(text)` | The error already exists, so the closure ran at once. `with_note`, `with_warning`, and `with_suggestion` stay on `Context` (a `Result` or `Option`), where the closure runs only on failure. |
+| `error.with_warning(\|\| text)`, `error.with_suggestion(\|\| text)` on an `Error` | `error.warning(text)`, `error.suggestion(text)` | The same. |
+| `error.into_std()` | `error.into()`, or `Box::<dyn Error + Send + Sync>::from(error)` | `From` gives the same box, for `Box<dyn Error + Send + Sync>`, `Box<dyn Error + Send>`, and `Box<dyn Error>`; `Error::from_boxed` still gives the original `Error` back. |
+| `errors.finish_with(value, message)` | `errors.finish(message)?;` then `Ok(value)` | |
+| `error.find_in_suppressed::<T>()` | `error.suppressed().iter().find_map(\|e\| e.find::<T>())` | The old method also searched the suppressed errors of suppressed errors. |
+| `define-err = "0.5"` beside report-err | `define-err = "0.9"` | report-err re-exports `Code`, `Severity`, `Category`, and `Kinds`; with two define-err versions in one build they are different types. Nothing else changed between define-err 0.5 and 0.9 for code that uses report-err. |
+

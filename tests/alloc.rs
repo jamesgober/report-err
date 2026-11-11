@@ -243,15 +243,15 @@ fn test_alloc_reading_allocates_nothing() {
 }
 
 #[test]
-fn test_alloc_into_std_is_one_whatever_the_depth() {
+fn test_alloc_into_box_is_one_whatever_the_depth() {
     let error = Error::new(io_error())
         .context("a")
         .context("b")
         .context("c");
-    let (boxed, n) = allocs(|| error.into_std());
+    let (boxed, n) = allocs(|| -> Box<dyn std::error::Error + Send + Sync> { error.into() });
     assert_eq!(n, 1);
     let (error, n) = allocs(|| Error::from_boxed(boxed));
-    assert_eq!(n, 0, "a box made by into_std gives the error back");
+    assert_eq!(n, 0, "a box made from an Error gives the error back");
     drop(error);
 }
 

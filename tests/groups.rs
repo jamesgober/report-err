@@ -32,7 +32,6 @@ fn test_group_with_no_children_and_empty_errors() {
     assert!(!format!("{error:?}").contains("Causes"));
     assert!(Errors::new().finish("x").is_ok());
     assert!(Errors::new().into_error("x").is_none());
-    assert_eq!(Errors::new().finish_with(5, "x").unwrap(), 5);
 }
 
 #[test]
@@ -230,7 +229,14 @@ fn test_suppressed_is_not_a_cause() {
     assert!(error.find::<Leaf>().is_none());
     assert!(!error.is::<Leaf>());
     assert_eq!(error.code(), None);
-    assert_eq!(error.find_in_suppressed::<Leaf>().map(|l| l.0), Some(1));
+    assert_eq!(
+        error
+            .suppressed()
+            .iter()
+            .find_map(|e| e.find::<Leaf>())
+            .map(|l| l.0),
+        Some(1)
+    );
     assert_eq!(error.chain().count(), 1);
 }
 
@@ -431,11 +437,11 @@ fn test_render_reports_a_failing_writer() {
 // ---------------------------------------------------------------- std, threads
 
 #[test]
-fn test_into_std_walks_like_chain() {
+fn test_into_box_walks_like_chain() {
     // E-102
     let error = Error::new(Leaf(1)).context("a").context("b");
     let expected: Vec<String> = error.chain().map(|l| l.to_string()).collect();
-    let boxed = error.into_std();
+    let boxed: Box<dyn std::error::Error + Send + Sync> = error.into();
     let mut walked = vec![boxed.to_string()];
     let mut cur = boxed.source();
     while let Some(link) = cur {
@@ -530,7 +536,7 @@ fn test_every_public_call_on_every_constructor() {
             .attach(1u8)
             .trace()
             .suppress(err!("s"))
-            .with_kind(report_err::Kinds::AUDIT);
+            .with_kinds(report_err::Kinds::AUDIT);
         let _ = (
             error.to_string(),
             format!("{error:#}"),
@@ -557,7 +563,7 @@ fn test_every_public_call_on_every_constructor() {
         );
         let _ = (
             error.find::<Leaf>(),
-            error.find_in_suppressed::<Leaf>(),
+            error.suppressed().iter().find_map(|e| e.find::<Leaf>()),
             error.record(),
         );
         let _ = (
@@ -575,7 +581,7 @@ fn test_every_public_call_on_every_constructor() {
         }
         let (a, b) = error.split(|_| true);
         let _ = a.map(Error::flatten);
-        let _ = b.map(Error::into_std);
+        let _ = b.map(<Box<dyn std::error::Error + Send + Sync>>::from);
     }
 }
 
