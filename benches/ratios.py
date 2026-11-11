@@ -96,11 +96,20 @@ def split(title):
     return title, "", ""
 
 
+# Rows that time only the standard library, kept beside report-err's as a
+# reference: no report-err code runs in them, so they are not gated (D-071).
+STD_ONLY = (
+    "collect/B16 std collect, stops at the first",
+    "collect/B16 std collect, none failing",
+)
+
+
 def ours(title):
     """report-err's own rows: its side of a comparison, or a group only it
-    has. The RD-14 model is not report-err's code."""
+    has. The RD-14 model and the std-only reference rows are not report-err's
+    code."""
     name, lib, _ = split(title)
-    if name.startswith("rd14"):
+    if name.startswith("rd14") or name in STD_ONLY:
         return False
     return lib in ("report-err", "")
 
