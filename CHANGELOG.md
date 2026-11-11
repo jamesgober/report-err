@@ -30,6 +30,9 @@ whose every example runs. `docs/MIGRATING.md` has the way from 0.7.
   same version.
 - `docs/API.md` is a task-by-task reference of every public item, and every
   example in it is compiled and run by `cargo test`.
+- `chain()` and reading a code keep their fast paths with define-err 0.9,
+  whose inlined identity probe had made both slower under link-time
+  optimisation; against 0.7.0, `chain()` is 5% to 30% faster on Linux.
 
 ### Removed
 

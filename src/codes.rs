@@ -113,10 +113,20 @@ impl Error {
     /// assert_eq!(error.code(), Some(DbError::TIMEOUT));
     /// ```
     #[must_use]
+    #[inline]
     pub fn code(&self) -> Option<Code> {
-        self.raw
-            .code()
-            .or_else(|| define_err::innermost_code(self.raw.root()).map(|f| f.0))
+        match self.raw.code() {
+            Some(code) => Some(code),
+            None => self.found_code(),
+        }
+    }
+
+    /// The code when none was set: the identity probe over the chain, then
+    /// the root's `ErrorInfo`. Out of line, so the probe define-err inlines
+    /// does not make `code` too large to inline at its callers (D-070).
+    fn found_code(&self) -> Option<Code> {
+        define_err::innermost_code(self.raw.root())
+            .map(|f| f.0)
             .or_else(|| self.raw.info().and_then(ErrorInfo::code))
     }
 
