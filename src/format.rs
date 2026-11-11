@@ -32,7 +32,7 @@ impl Mode {
         escape: false,
         guard: true,
     };
-    /// `ExitReport` and `unraisable`: guarded and escaped for a terminal.
+    /// `ExitReport` and `report_unhandled`: guarded and escaped for a terminal.
     #[cfg_attr(not(feature = "std"), allow(dead_code))]
     pub(crate) const TERMINAL: Mode = Mode {
         escape: true,
@@ -755,7 +755,7 @@ fn one_line(out: &mut dyn Write, mode: Mode, indent: &'static str, error: &Error
     }
 }
 
-/// `{:#}` for a terminal: guarded and escaped (`unraisable`).
+/// `{:#}` for a terminal: guarded and escaped (`report_unhandled`).
 #[cfg(feature = "std")]
 pub(crate) fn write_chain_terminal(error: &Error, out: &mut dyn Write) -> fmt::Result {
     one_line(out, Mode::TERMINAL, "    ", error)

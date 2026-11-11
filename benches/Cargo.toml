@@ -9,7 +9,7 @@ publish = false
 
 [dependencies]
 report-err = { path = ".." }
-define-err = "0.5"
+define-err = "0.9"
 anyhow = "=1.0.104"
 eyre = "=0.6.14"
 error-stack = "=0.8.0"

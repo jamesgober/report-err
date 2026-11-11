@@ -80,16 +80,16 @@ impl fmt::Debug for ExitReport {
     }
 }
 
-/// The line `unraisable` writes when no reporter is installed: the chain,
+/// The line `report_unhandled` writes when no reporter is installed: the chain,
 /// guarded and escaped, cut at `max_render`.
-pub(crate) fn unraisable_line(error: &Error) {
+pub(crate) fn unhandled_line(error: &Error) {
     let stderr = std::io::stderr();
     let mut out = Capped {
         inner: stderr.lock(),
         written: 0,
         full: false,
     };
-    let _ = fmt::Write::write_str(&mut out, "Error (unraisable): ");
+    let _ = fmt::Write::write_str(&mut out, "Error (unhandled): ");
     let _ = crate::format::write_chain_terminal(error, &mut out);
     let _ = out.inner.write_all(b"\n");
     let _ = out.inner.flush();

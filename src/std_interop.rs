@@ -31,22 +31,8 @@ impl StdError for Boxed {
 }
 
 impl Error {
-    /// The error as an owned standard error, for code that wants a
-    /// `Box<dyn Error>`: the same `Display` and the same `source()` chain, in
-    /// one allocation however many layers there are.
-    ///
-    /// ```
-    /// let error = report_err::Error::msg("disk full").context("saving");
-    /// let boxed: Box<dyn std::error::Error + Send + Sync> = error.into_std();
-    /// assert_eq!(boxed.to_string(), "saving");
-    /// assert_eq!(boxed.source().map(|s| s.to_string()).as_deref(), Some("disk full"));
-    /// ```
-    pub fn into_std(self) -> Box<DynError> {
-        Box::new(Boxed(self))
-    }
-
-    /// An error from a boxed standard error. A box made by
-    /// [`into_std`](Error::into_std) gives the original `Error` back; any
+    /// An error from a boxed standard error. A box made from an `Error`
+    /// (with `From` or `.into()`) gives the original `Error` back; any
     /// other box becomes the root, which answers to
     /// `downcast_ref::<Box<dyn Error + Send + Sync>>()`, and whose concrete
     /// error is the last link of [`chain`](Error::chain).
@@ -57,7 +43,8 @@ impl Error {
     /// assert!(error.root_cause().downcast_ref::<std::fmt::Error>().is_some());
     ///
     /// let original = report_err::Error::msg("kept").context("layer");
-    /// let back = report_err::Error::from_boxed(original.into_std());
+    /// let boxed: Box<dyn std::error::Error + Send + Sync> = original.into();
+    /// let back = report_err::Error::from_boxed(boxed);
     /// assert_eq!(format!("{back:#}"), "layer: kept");
     /// ```
     #[track_caller]
@@ -74,19 +61,19 @@ impl Error {
 
 impl From<Error> for Box<dyn StdError + Send + Sync + 'static> {
     fn from(error: Error) -> Self {
-        error.into_std()
+        Box::new(Boxed(error))
     }
 }
 
 impl From<Error> for Box<dyn StdError + Send + 'static> {
     fn from(error: Error) -> Self {
-        error.into_std()
+        Box::new(Boxed(error))
     }
 }
 
 impl From<Error> for Box<dyn StdError + 'static> {
     fn from(error: Error) -> Self {
-        error.into_std()
+        Box::new(Boxed(error))
     }
 }
 
@@ -98,7 +85,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_std_into_std_keeps_display_and_chain() {
+    fn test_std_into_box_keeps_display_and_chain() {
         let error = Error::msg("root").context("a").context("b");
         let boxed: Box<dyn StdError + 'static> = error.into();
         assert_eq!(boxed.to_string(), "b");
@@ -115,7 +102,7 @@ mod tests {
     fn test_std_round_trip_does_not_double_wrap() {
         let error = Error::msg("kept").context("layer");
         let at = error.location();
-        let back = Error::from_boxed(error.into_std());
+        let back = Error::from_boxed(error.into());
         assert_eq!(back.location(), at);
         assert_eq!(format!("{back:#}"), "layer: kept");
         assert_eq!(back.chain().count(), 2);

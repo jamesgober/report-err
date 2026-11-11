@@ -318,7 +318,7 @@ fn test_chain_and_source_walk_agree_everywhere() {
         assert_eq!(walk(&*error), chain(&error));
         let as_ref: &(dyn StdError + Send + Sync + 'static) = error.as_ref();
         assert_eq!(walk(as_ref), chain(&error));
-        let boxed = error.into_std();
+        let boxed: Box<dyn std::error::Error + Send + Sync> = error.into();
         let from_box = walk(&*boxed);
         assert_eq!(from_box.len(), layers + 2);
     }

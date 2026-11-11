@@ -13,6 +13,41 @@
 
 ---
 
+## [0.8.0] - 2026-11-11
+
+A simpler API: one way to do each thing, plainer names, and a reference
+whose every example runs. `docs/MIGRATING.md` has the way from 0.7.
+
+### Changed
+
+- `unraisable` is now `report_unhandled`: it pairs with `Error::report`,
+  and the record it sends is marked unhandled. Without a reporter, its line
+  on standard error starts `Error (unhandled): `.
+- `Error::with_kind` is now `with_kinds`: it takes a `Kinds` set and adds
+  every kind in it.
+- define-err 0.9 (was 0.5). `Code`, `Severity`, `Category`, and `Kinds` are
+  re-exported, so an application that uses define-err directly needs the
+  same version.
+- `docs/API.md` is a task-by-task reference of every public item, and every
+  example in it is compiled and run by `cargo test`.
+- `chain()` and reading a code keep their fast paths with define-err 0.9,
+  whose inlined identity probe had made both slower under link-time
+  optimisation; against 0.7.0, `chain()` is 5% to 30% faster on Linux.
+
+### Removed
+
+Each of these only repeated another way of doing the same thing;
+`docs/MIGRATING.md` has the replacement for each.
+
+- `Error::with_note`, `Error::with_warning`, and `Error::with_suggestion`:
+  use `note`, `warning`, and `suggestion`. The lazy forms stay on `Context`.
+- `Error::into_std`: use `From` (`.into()`), which gives the same box.
+- `Errors::finish_with`: use `finish` and then `Ok(value)`.
+- `Error::find_in_suppressed`: use
+  `error.suppressed().iter().find_map(|e| e.find::<T>())`.
+
+---
+
 ## [0.7.0] - 2026-11-09
 
 Hardening. `docs/SECURITY.md` has every threat and the test that proves its
@@ -303,7 +338,8 @@ The scaffold and the plan. No functional code yet.
   cases, open decisions, and the decision log D-001 to D-008),
   `dev/DIRECTIVES.md`, and `dev/ROADMAP.md`.
 
-[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/jamesgober/report-err/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/jamesgober/report-err/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jamesgober/report-err/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/jamesgober/report-err/compare/v0.4.0...v0.5.0

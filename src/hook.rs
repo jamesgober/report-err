@@ -207,7 +207,7 @@ impl Error {
 ///     fn drop(&mut self) {
 ///         let flushed: Result<(), report_err::Error> = Err(report_err::err!("disk full"));
 ///         if let Err(error) = flushed {
-///             report_err::unraisable(error.context("flushing a segment on drop"));
+///             report_err::report_unhandled(error.context("flushing a segment on drop"));
 ///         }
 ///     }
 /// }
@@ -215,7 +215,7 @@ impl Error {
 /// drop(Segment);
 /// ```
 #[track_caller]
-pub fn unraisable(error: Error) -> bool {
+pub fn report_unhandled(error: Error) -> bool {
     if define_err::is_installed() {
         error.raw.set_flags(REPORTED);
         let record = error.record_with(false, Some(Location::caller()));
@@ -223,6 +223,6 @@ pub fn unraisable(error: Error) -> bool {
         return true;
     }
     #[cfg(feature = "std")]
-    crate::exit::unraisable_line(&error);
+    crate::exit::unhandled_line(&error);
     false
 }

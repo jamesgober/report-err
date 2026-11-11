@@ -29,7 +29,7 @@
         <strong>MSRV is 1.81+</strong> (Rust 2021 edition). <code>no_std</code> + <code>alloc</code>; <code>std</code> on by default.
     </p>
     <blockquote>
-        <strong>Status: <code>0.7.0</code>, feature complete, measured, and hardened.</strong> The anyhow surface; error codes, severity, categories, and kinds from define-err; notes, attachments, a propagation trail, and backtraces; <code>ExitReport</code>; several causes and <code>collect_all()</code>; suppressed errors and cleanup; budgets on everything that grows; the panic boundary; the creation hook; and reporting through define-err's facade. <code>0.6</code> measured it against anyhow, eyre, error-stack, and <code>Box&lt;dyn Error&gt;</code> on three platforms (<a href="./docs/PERFORMANCE.md"><code>docs/PERFORMANCE.md</code></a>); <code>0.7</code> hardened it with attack tests for every threat, a day of fuzzing per target, and 8-hour soaks (<a href="./docs/SECURITY.md"><code>docs/SECURITY.md</code></a>); next comes the alpha, with kraken migrated (<code>0.8</code>). The whole API is in <a href="./docs/API.md"><code>docs/API.md</code></a>.
+        <strong>Status: <code>0.8.0</code>, feature complete, measured, hardened, and simplified.</strong> The anyhow surface; error codes, severity, categories, and kinds from define-err; notes, attachments, a propagation trail, and backtraces; <code>ExitReport</code>; several causes and <code>collect_all()</code>; suppressed errors and cleanup; budgets on everything that grows; the panic boundary; the creation hook; and reporting through define-err's facade. <code>0.6</code> measured it against anyhow, eyre, error-stack, and <code>Box&lt;dyn Error&gt;</code> on three platforms (<a href="./docs/PERFORMANCE.md"><code>docs/PERFORMANCE.md</code></a>); <code>0.7</code> hardened it with attack tests for every threat, a day of fuzzing per target, and 8-hour soaks (<a href="./docs/SECURITY.md"><code>docs/SECURITY.md</code></a>); <code>0.8</code> removed the methods that only repeated others and gave two items plainer names (<a href="./docs/MIGRATING.md#from-report-err-07-to-08">the migration note</a>); next comes the alpha, with kraken migrated (<code>0.9</code>). The whole API is in <a href="./docs/API.md"><code>docs/API.md</code></a>.
     </blockquote>
 </div>
 
@@ -40,7 +40,7 @@
 
 ```toml
 [dependencies]
-report-err = "0.7.0"
+report-err = "0.8.0"
 ```
 
 ## Quick start
@@ -138,7 +138,7 @@ Location: src/users.rs:6:9
 
 | anyhow | report-err |
 |---|---|
-| `anyhow = "1"` | `report-err = "0.7.0"` |
+| `anyhow = "1"` | `report-err = "0.8.0"` |
 | `use anyhow::{Context, Result};` | `use report_err::{Context, Result};` |
 | `anyhow::Error`, `bail!`, `ensure!`, `format_err!`, `.context`, `.chain()`, `.downcast_ref` | same names |
 | `anyhow!(...)` | `err!(...)` |
@@ -184,7 +184,8 @@ let page = boundary(|| plugin.render(&page)).context("plugin `gallery` failed")?
 
 | What | Version |
 |---|---|
-| Attack tests, fuzzing, soak runs, `SECURITY.md` | `0.7.0` |
+| The alpha: kraken and one more application migrated | `0.9.0` |
+| Beta and release candidates | `0.10.0` |
 
 ## Documentation
 

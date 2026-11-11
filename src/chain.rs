@@ -90,6 +90,14 @@ impl<'a> Chain<'a> {
 
     /// The next link, with its text when the error holds it as a string.
     pub(crate) fn next_link(&mut self) -> Option<Link<'a>> {
+        self.step::<true>()
+    }
+
+    /// One step of the walk. With `TEXT` false the link's text is not looked
+    /// up, so `Iterator::next`, which drops it, does not pay for it whatever
+    /// the optimiser inlines (D-070).
+    #[inline(always)]
+    fn step<const TEXT: bool>(&mut self) -> Option<Link<'a>> {
         if self.back > 0 && self.remaining() <= self.back {
             return None;
         }
@@ -105,6 +113,12 @@ impl<'a> Chain<'a> {
             self.frames -= 1;
             let frame = self.raw.frame(self.frames)?;
             self.yielded += 1;
+            if !TEXT {
+                return Some(Link {
+                    error: frame,
+                    text: None,
+                });
+            }
             let text = match &frame.value {
                 FrameValue::Static(text) => Some(*text),
                 FrameValue::Text(text) => Some(text.as_str()),
@@ -115,7 +129,7 @@ impl<'a> Chain<'a> {
         let link = self.next.take()?;
         self.yielded += 1;
         self.next = link.source();
-        let text = if core::mem::take(&mut self.at_root) {
+        let text = if core::mem::take(&mut self.at_root) && TEXT {
             let raw = self.raw;
             raw.payload_ref::<&'static str>().copied().or_else(|| {
                 raw.payload_ref::<alloc::string::String>()
@@ -131,8 +145,9 @@ impl<'a> Chain<'a> {
 impl<'a> Iterator for Chain<'a> {
     type Item = &'a (dyn StdError + 'static);
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_link().map(|link| link.error)
+        self.step::<false>().map(|link| link.error)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

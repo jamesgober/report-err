@@ -144,40 +144,6 @@ impl Error {
         self.section(SectionKind::Suggestion, text)
     }
 
-    /// As [`note`](Error::note), with the text built by `f`.
-    ///
-    /// ```
-    /// let count = 3;
-    /// let error = report_err::err!("x").with_note(|| format!("{count} retries"));
-    /// assert_eq!(error.sections().next().map(|s| s.text), Some("3 retries"));
-    /// ```
-    pub fn with_note<S: Display + Send + Sync + 'static, F: FnOnce() -> S>(self, f: F) -> Error {
-        self.section(SectionKind::Note, f())
-    }
-
-    /// As [`warning`](Error::warning), with the text built by `f`.
-    ///
-    /// ```
-    /// let error = report_err::err!("x").with_warning(|| "partial write");
-    /// assert_eq!(error.sections().count(), 1);
-    /// ```
-    pub fn with_warning<S: Display + Send + Sync + 'static, F: FnOnce() -> S>(self, f: F) -> Error {
-        self.section(SectionKind::Warning, f())
-    }
-
-    /// As [`suggestion`](Error::suggestion), with the text built by `f`.
-    ///
-    /// ```
-    /// let error = report_err::err!("x").with_suggestion(|| "retry later");
-    /// assert_eq!(error.sections().count(), 1);
-    /// ```
-    pub fn with_suggestion<S: Display + Send + Sync + 'static, F: FnOnce() -> S>(
-        self,
-        f: F,
-    ) -> Error {
-        self.section(SectionKind::Suggestion, f())
-    }
-
     fn section<S: Display + Send + Sync + 'static>(mut self, kind: SectionKind, text: S) -> Error {
         let extras = self.raw.extras_mut();
         let text: Cow<'static, str> = match (&text as &dyn Any).downcast_ref::<&'static str>() {

@@ -256,9 +256,9 @@ impl Error {
 
     /// The first `T` in the tree, depth first: this error's context values,
     /// root, and the root's sources, then each child's tree. Suppressed
-    /// errors are not searched (see
-    /// [`find_in_suppressed`](Error::find_in_suppressed)). The walk is
-    /// iterative and bounded; it allocates nothing.
+    /// errors are not searched; `error.suppressed().iter().find_map(|e|
+    /// e.find::<T>())` searches them. The walk is iterative and bounded; it
+    /// allocates nothing.
     ///
     /// ```
     /// use report_err::{err, Context, Error};
@@ -283,42 +283,6 @@ impl Error {
     /// ```
     pub fn find_all<T: StdError + 'static>(&self) -> FindAll<'_, T> {
         FindAll::new(core::slice::from_ref(self))
-    }
-
-    /// The first `T` among the suppressed errors' trees (each searched as
-    /// [`find`](Error::find) searches), then theirs, in order.
-    ///
-    /// ```
-    /// let error = report_err::err!("write failed")
-    ///     .suppress(report_err::Error::new(std::fmt::Error));
-    /// assert!(error.find::<std::fmt::Error>().is_none());
-    /// assert!(error.find_in_suppressed::<std::fmt::Error>().is_some());
-    /// ```
-    #[must_use]
-    pub fn find_in_suppressed<T: StdError + 'static>(&self) -> Option<&T> {
-        let mut stack: [&[Error]; MAX_DEPTH + 1] = [&[]; MAX_DEPTH + 1];
-        let mut top = 0usize;
-        if let Some(slot) = stack.get_mut(0) {
-            *slot = self.suppressed();
-        }
-        loop {
-            let level = stack.get_mut(top)?;
-            let Some((first, rest)) = level.split_first() else {
-                top = top.checked_sub(1)?;
-                continue;
-            };
-            *level = rest;
-            if let Some(found) = first.find::<T>() {
-                return Some(found);
-            }
-            let theirs = first.suppressed();
-            if !theirs.is_empty() {
-                if let Some(slot) = stack.get_mut(top + 1) {
-                    *slot = theirs;
-                    top += 1;
-                }
-            }
-        }
     }
 }
 
@@ -531,21 +495,8 @@ impl Errors {
     where
         M: Display + Debug + Send + Sync + 'static,
     {
-        self.finish_with((), message)
-    }
-
-    /// `Ok(value)`, or a group with `message` and every failure as a child.
-    ///
-    /// # Errors
-    ///
-    /// The group, when anything was pushed.
-    #[track_caller]
-    pub fn finish_with<T, M>(self, value: T, message: M) -> crate::Result<T>
-    where
-        M: Display + Debug + Send + Sync + 'static,
-    {
         match self.into_error(message) {
-            None => Ok(value),
+            None => Ok(()),
             Some(error) => Err(error),
         }
     }

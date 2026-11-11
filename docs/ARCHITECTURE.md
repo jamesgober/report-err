@@ -38,7 +38,7 @@ How report-err is put together: what each module owns, the paths an error takes 
 | `group` | several causes, suppressed errors, `split`, `flatten`, `find`, `Errors`, `CollectAll` |
 | `codes` | code, severity, category, kinds, public message, exit code, looked up from define-err |
 | `format` | `Display` and `Debug`, the report, the guarded renderer (`render`) |
-| `hook` | the creation hook, `report`, `record`, `unraisable` |
+| `hook` | the creation hook, `report`, `record`, `report_unhandled` |
 | `panic` | `boundary`, `run`, `from_panic` |
 | `exit` | `ExitReport` (std) |
 | `limits` | the budgets, `configure`, `configure_catalogs` |
@@ -51,7 +51,7 @@ How report-err is put together: what each module owns, the paths an error takes 
 1. **Created** (`Error::new`, `?`, `err!`, `bail!`, `ensure!`, `Error::msg`, `group`, `from_panic`, ...). The node is allocated with the root inside it and the caller's location as the origin. Then, in `created()`: a backtrace if std's rules turn them on, and the creation hook if one is installed (once, guarded against recursion on the same thread, and against a panic with `std`).
 2. **Travels.** Each `.context(..)` adds a layer; each `.trace()` records a point; `.note(..)`, `.attach(..)`, `.coded(..)`, `push_child`, `suppress` add the rest. None of these runs the hook or captures a backtrace.
 3. **Read.** `chain()`, `find`, `code()`, `severity()`, `category()`, `kinds()`, `public_message()`, `exit_code()` read what is there; none of them allocates.
-4. **Reported.** `report()` sets the reported flag once and, when a reporter is installed, builds the error's `ErrorRecord` and hands it to define-err's facade. `ExitReport` prints the report to standard error and exits with the error's code. `unraisable` reports an error with nowhere to go, as unhandled.
+4. **Reported.** `report()` sets the reported flag once and, when a reporter is installed, builds the error's `ErrorRecord` and hands it to define-err's facade. `ExitReport` prints the report to standard error and exits with the error's code. `report_unhandled` reports an error with nowhere to go, as unhandled.
 5. **Dropped.** The node and its blocks are freed; children and suppressed errors are dropped with them. The tree's depth is bounded, so the drop's recursion is bounded too.
 
 ## Bounds
@@ -60,7 +60,7 @@ Every part that can grow has a budget (`Limits`, set once with `configure`): con
 
 ## Guarded output
 
-Every path that prints an error for someone else (`ExitReport`, `report`, `record`, `render`, `unraisable`) writes each `Display` through a guard: a `Display` that panics (with `std` and unwinding) prints `<display panicked>`, one that fails prints `<display failed>`, and the rest of the output goes on. Output stops at `max_render` bytes. The terminal paths (`ExitReport`, `unraisable`) also escape control characters and bidirectional controls, and indent a message's continuation lines, so no message can move the cursor or fake a block of the report. `{}`, `{:#}`, and `{:?}` are not guarded: they behave like any other `Display`.
+Every path that prints an error for someone else (`ExitReport`, `report`, `record`, `render`, `report_unhandled`) writes each `Display` through a guard: a `Display` that panics (with `std` and unwinding) prints `<display panicked>`, one that fails prints `<display failed>`, and the rest of the output goes on. Output stops at `max_render` bytes. The terminal paths (`ExitReport`, `report_unhandled`) also escape control characters and bidirectional controls, and indent a message's continuation lines, so no message can move the cursor or fake a block of the report. `{}`, `{:#}`, and `{:?}` are not guarded: they behave like any other `Display`.
 
 ## Process-wide state
 
