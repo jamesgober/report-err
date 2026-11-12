@@ -28,12 +28,12 @@ Requires: define-err's own 0.2 design lock (its API approved), so the names repo
 
 ## v0.3.0 - Core: anyhow parity (DONE, 2026-10-29)
 API: ROOT-02, ROOT-03, ERR-01 to ERR-10, ERR-17, CTX-01, CTX-02, MAC-01 to MAC-03, CHN-01, CHN-02, MAIN-01, STD-01 to STD-03; `Deref`, `DerefMut`, and `AsRef` to `dyn Error` (D-003).
-Exit: a kraken branch migrated by the `PLAN.md` 8.14.1 pass compiles and passes its tests (trial; the merge happens at 0.8); edge cases E-1 to E-49d and E-57 to E-65 that apply to the 0.3 surface pass.
+Exit: a compiler branch migrated by the `PLAN.md` 8.14.1 pass compiles and passes its tests (trial; the merge happens at 0.8); edge cases E-1 to E-49d and E-57 to E-65 that apply to the 0.3 surface pass.
 - [x] `src/raw.rs` with every invariant test (I-1 to I-13); Miri clean under both aliasing models with strict provenance; ASan job active.
 - [x] Flat frames with the header slot and the chain view, the per-link mechanism chosen by benchmark (D-011); formatting rules for message, causes, location; de-duplication rule.
 - [x] Counting-allocator tests for every 7.5 row that exists at 0.3; the anyhow parity suite for the 0.3 surface, including hand-written `source()` walks; the `no_std` build and tests.
 - [x] `docs/MIGRATING.md`, `docs/UNSAFE.md` updated.
-- [x] kraken trial migration (2026-10-29): 2 manifest lines and 36 source lines changed by the find-and-replace pass, no hand edits; 1,974 tests passed with report-err as with anyhow, and the same 3 tests failed with both (they link a native program; "Linking failed" on the machine used). Details in `docs/MIGRATING.md`.
+- [x] Compiler trial migration (2026-10-29): 2 manifest lines and 36 source lines changed by the find-and-replace pass, no hand edits; 1,974 tests passed with report-err as with anyhow, and the same 3 tests failed with both (they link a native program; "Linking failed" on the machine used). Details in `docs/MIGRATING.md`.
 - [x] Benchmarks against anyhow (PLAN 11.4). One measured exception recorded for 0.6: `{:#}` (D-022).
 
 ## v0.4.0 - Extended: codes, sections, attachments, trace, exit codes (DONE, 2026-11-02)
@@ -94,11 +94,11 @@ Exit: report-err on define-err 0.10, the review findings that release unblocks f
 ## v0.10.0 - Alpha
 Exit: both migrations green; every surprise fixed or recorded in `docs/MIGRATING.md`.
 - [ ] Remove the `ACCEPTED` entries from `benches/ratios.py` in the first pull request after 0.9.0 (D-082 to D-084); the base then has the change.
-- [ ] kraken migrated for real on a branch James reviews; `kraken-lsp`'s unused anyhow dependency removed. Rehearsed on 2026-11-08 against the 0.7 code: the find-and-replace pass alone, 2,803 tests passed and the same 4 native-linking tests failed as with anyhow.
-- [ ] One more application migrated (a Hive DB tool or WASP boot code) using codes, `ExitReport`, and `report()`: hive-system's `hive-admin`, rehearsed on 2026-11-08 (an `HADM` catalog, `run`, a reporter that logs; exit codes 64, 65, 70, 73 as designed).
-- [ ] The report prints a code's help (`Help:` under `Code:`) when its catalog entry is known; `docs/MIGRATING.md` says to call `configure_catalogs` for it. Found by the `hive-admin` rehearsal.
+- [ ] The compiler migrated for real on a branch James reviews; its language server's unused anyhow dependency removed. Rehearsed on 2026-11-08 against the 0.7 code: the find-and-replace pass alone, 2,803 tests passed and the same 4 native-linking tests failed as with anyhow.
+- [ ] One more application migrated (a database tool or service boot code) using codes, `ExitReport`, and `report()`: an admin tool, rehearsed on 2026-11-08 (an `HADM` catalog, `run`, a reporter that logs; exit codes 64, 65, 70, 73 as designed).
+- [ ] The report prints a code's help (`Help:` under `Code:`) when its catalog entry is known; `docs/MIGRATING.md` says to call `configure_catalogs` for it. Found by the admin tool rehearsal.
 - [ ] The `Code:` line names the severity (`warning`), not its number.
-- [ ] Ask define-err for a way to exit 74 (I/O) at normal severity: only `DataLoss` maps to 74 today. Found by the `hive-admin` rehearsal.
+- [ ] Ask define-err for a way to exit 74 (I/O) at normal severity: only `DataLoss` maps to 74 today. Found by the admin tool rehearsal.
 - [ ] Decide whether `category` reads an `io::Error` source below a coded wrapper, not only an `io::Error` root.
 - [ ] Review F-5, rest: compute the facts once per record (today five chain walks more than needed). The catalog index is done (D-079). Needs its own benchmark run, since every accessor shares the lookup path.
 - [ ] Review F-6: an installed creation hook turns 1 allocation into 5. Keep hook fields out of the context extension block, in one `String` with offsets. Deferred from 0.8.1 and 0.9.0: it changes `Extras`'s layout, which needs the allocation and size tables re-measured.

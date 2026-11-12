@@ -22,7 +22,7 @@
 | Depends on | L1 "definitions" (`define-err`) by published version, for `Code`, `Severity`, `Kinds`, `Category`, `ErrorRecord`, and the reporting facade, from `0.4.0`. Section 3.4 lists the exact interface requested from L1. |
 | Replaces | `anyhow` (dynamic errors, context, `bail!`, `ensure!`, downcasting, the `Result` alias); the useful parts of `eyre`/`color-eyre` (sections), `error-stack` (attachments read back by type, several causes), and `snafu`'s `Report` for `main` |
 | Classification | A library (toolbox of types and functions). No threads, no timers, no I/O except the report written to standard error by `ExitReport` when `main` returns. |
-| MSRV | 1.81, the same as L1 (define-err OD-2), so kraken (1.80) moves by one minor version when it migrates; 1.85 if L1 moves to 1.85 (RD-9, D-005) |
+| MSRV | 1.81, the same as L1 (define-err OD-2), so a downstream compiler (1.80) moves by one minor version when it migrates; 1.85 if L1 moves to 1.85 (RD-9, D-005) |
 | Edition | 2021 (follows the MSRV; 2024 if the MSRV becomes 1.85) |
 | License | `Apache-2.0 OR MIT` |
 | Owner | James Gober `<me@jamesgober.com>` |
@@ -31,7 +31,7 @@
 
 1. Sections 2 to 5 (what it is, where it sits, scope, requirements), then section 6 (standards).
 2. Section 7 (design), especially 7.3, 7.4, and 7.6: the one-word representation, its `unsafe` core, and the chain view are the riskiest part.
-3. Section 8 (API by tier and grade) and 8.14 (migrating from anyhow, with kraken as the worked case).
+3. Section 8 (API by tier and grade) and 8.14 (migrating from anyhow, with a compiler as the worked case).
 4. Sections 10 to 12 (threats, performance, tests). Every threat and edge case there has a test.
 5. Sections 14 to 16 (roadmap, release routine, definition of done).
 6. Section 17 (open decisions): the recommendation stands unless James overrides it. Section 19 (ideas) and section 20 (decision log) record what has been decided.
@@ -130,9 +130,9 @@ All of it costs nothing until used: an `Error` that only carries an error and it
 
 | User | How |
 |---|---|
-| kraken (compiler, LSP) | replaces `anyhow` in `compiler/src/main.rs` and `compiler/src/modules/loader.rs` (section 8.14) |
-| CLIs: cli-forge, mod-cli, hive-exec, Hive DB tools | `fn main() -> ExitReport`, context on every I/O call, exit codes from categories |
-| WASP and Hive DB services | application-layer code above the typed library errors; `Error::report()` at request and task boundaries |
+| a downstream compiler and language server | replaces `anyhow` in `compiler/src/main.rs` and `compiler/src/modules/loader.rs` (section 8.14) |
+| CLIs: cli-forge, mod-cli, database tools | `fn main() -> ExitReport`, context on every I/O call, exit codes from categories |
+| network and database services | application-layer code above the typed library errors; `Error::report()` at request and task boundaries |
 | the error suite | re-exports `Error`, `Result`, the macros, and `ExitReport` in its prelude |
 | L7 error service (optional dependency) | builds owned `ErrorRecord`s from an `Error` with `Error::record()`; installs the creation hook (X-9, RD-17) |
 | L4 render | does **not** depend on report-err: it walks causes through `std::error::Error` or reads an `ErrorRecord`. `Error::into_std()` and `Error::record()` are the bridges |
@@ -148,12 +148,12 @@ All of it costs nothing until used: an `Error` that only carries an error and it
 
 No third-party runtime dependency. Dev-dependencies: criterion, proptest, trybuild, and the competitor crates for benchmarks and parity tests (anyhow, eyre, color-eyre, error-stack, snafu).
 
-### 3.3 Where it sits in WASP
+### 3.3 Where it sits in an application stack
 
 ```
- WASP application code (handlers, jobs, boot)         ─▶ report-err  (Error, context, ExitReport)
- WASP libraries (gateway, gate, web, db adapters)      ─▶ L1 typed errors (no report-err in public APIs)
- WASP error pipeline (L7 + L4 problem details)         ◀─ Error::report() through the L1 facade
+ application code (handlers, jobs, boot)              ─▶ report-err  (Error, context, ExitReport)
+ libraries (gateway, gate, web, db adapters)           ─▶ L1 typed errors (no report-err in public APIs)
+ error pipeline (L7 + L4 problem details)              ◀─ Error::report() through the L1 facade
  dispatch-io / relay-io (the coms bridge)              ◀─ L7 forwards records; report-err never talks to them directly
 ```
 
@@ -356,7 +356,7 @@ Copied from the library standard section 2, adapted only where report-err genuin
 
 - **Zero third-party runtime dependencies.** Exceptions, each recorded with its reason: audited cryptography reached through `crypt-io`; `rustls` inside `tls-net` (TLS is never written in-house). **Adapted:** neither exception applies; report-err has no third-party runtime dependency at all.
 - First-party crates are used by **published version**, never `path = "../..."` (each crate is its own repository and CI checks it out alone). **Adapted:** the L1 dependency is added only once L1 is published (14: 0.3 waits for an L1 release).
-- **No async runtime** (no tokio, no async-std) in any crate; cores are sans-IO and work with any driver. The REPS clause "MUST use tokio" is a known mistake and is recorded as an approved exception in each crate's plan. **Adapted:** report-err works unchanged under any runtime, including kraken's `#[tokio::main] async fn main() -> Result<()>` (8.14).
+- **No async runtime** (no tokio, no async-std) in any crate; cores are sans-IO and work with any driver. The REPS clause "MUST use tokio" is a known mistake and is recorded as an approved exception in each crate's plan. **Adapted:** report-err works unchanged under any runtime, including the compiler's `#[tokio::main] async fn main() -> Result<()>` (8.14).
 - Optional adapters for other ecosystems only behind non-default features, and never required.
 - Dev-dependencies (criterion, proptest) are allowed. **Adapted (added):** trybuild for compile-fail tests; anyhow, eyre, color-eyre, error-stack, and snafu as dev-dependencies of the benchmarks and parity tests only.
 
@@ -396,12 +396,12 @@ Copied from the library standard section 2, adapted only where report-err genuin
 - By 1.0: `docs/ARCHITECTURE.md`, `docs/PERFORMANCE.md` (measured numbers, method, hardware), `docs/SECURITY.md` (threat model), `docs/PLATFORM-NOTES.md`, `docs/STABILITY-1.0.md`. **Adapted (added):** `docs/UNSAFE.md` (the audit of `src/raw.rs`) and `docs/MIGRATING.md` (from anyhow, eyre, and snafu's `Whatever`).
 - `CHANGELOG.md` in Keep a Changelog 1.1.0 format, updated in the same change as the code.
 - Release notes per version in `docs/release/vX.Y.Z.md`.
-- Writing: plain, specific, human prose; past tense in release notes; every claim matches the build; none of the four marketing words banned in the library standard 2.12; no em dash (U+2014); no emoji; never a reference to `.dev/` in public files.
+- Writing: plain, specific, human prose; past tense in release notes; every claim matches the build; none of the four marketing words banned in the library standard 2.12; no em dash (U+2014); no emoji; never a reference to private working files in public files.
 
 ### 6.13 Repository and tooling
 
-- The portfolio's repository layout: `.claude/CLAUDE.md` and `.dev/` (both gitignored), `.editorconfig`, `.gitattributes` (`* text=auto eol=lf`), `.github/workflows/ci.yml`, `.gitignore` (also `Cargo.lock`), `benches/`, `examples/`, `tests/`, `Cargo.toml`, `CHANGELOG.md`, `clippy.toml`, `deny.toml`, `rustfmt.toml`, `dev/DIRECTIVES.md`, `dev/PLAN.md`, `dev/ROADMAP.md` (all committed), `docs/`, `LICENSE-APACHE`, `LICENSE-MIT`, `README.md`, `REPS.md` (byte-identical copy), `src/`. **Adapted (added):** `fuzz/` (cargo-fuzz targets; corpus out of repo), `tests/ui/` (trybuild compile-fail cases), `tests/abort/` (a small binary crate built with `panic = "abort"` and run as a subprocess, 12.8).
-- `Cargo.toml` in the portfolio layout: edition 2024, MSRV 1.85 unless the plan justifies more, `Apache-2.0 OR MIT`, author `James Gober <me@jamesgober.com>`, release profile `opt-level = 3`, `lto = "fat"`, `codegen-units = 1`, `panic = "abort"`, `strip = "symbols"`. **Adapted:** MSRV **1.81** and edition **2021**, the same as L1 (define-err's plan OD-2): L1 caps every error crate's MSRV, and kraken (1.80), the first migration target, then moves by one minor version instead of five (RD-9). **Adapted (note):** the release profile of the crate itself does not affect users; but the portfolio's applications use `panic = "abort"`, so `boundary` catches nothing in their release builds. The README says so beside the `boundary` example (7.15).
+- The portfolio's repository layout: `.editorconfig`, `.gitattributes` (`* text=auto eol=lf`), `.github/workflows/ci.yml`, `.gitignore` (also `Cargo.lock`), `benches/`, `examples/`, `tests/`, `Cargo.toml`, `CHANGELOG.md`, `clippy.toml`, `deny.toml`, `rustfmt.toml`, `dev/DIRECTIVES.md`, `dev/PLAN.md`, `dev/ROADMAP.md` (all committed), `docs/`, `LICENSE-APACHE`, `LICENSE-MIT`, `README.md`, `REPS.md` (byte-identical copy), `src/`. **Adapted (added):** `fuzz/` (cargo-fuzz targets; corpus out of repo), `tests/ui/` (trybuild compile-fail cases), `tests/abort/` (a small binary crate built with `panic = "abort"` and run as a subprocess, 12.8).
+- `Cargo.toml` in the portfolio layout: edition 2024, MSRV 1.85 unless the plan justifies more, `Apache-2.0 OR MIT`, author `James Gober <me@jamesgober.com>`, release profile `opt-level = 3`, `lto = "fat"`, `codegen-units = 1`, `panic = "abort"`, `strip = "symbols"`. **Adapted:** MSRV **1.81** and edition **2021**, the same as L1 (define-err's plan OD-2): L1 caps every error crate's MSRV, and the downstream compiler (1.80), the first migration target, then moves by one minor version instead of five (RD-9). **Adapted (note):** the release profile of the crate itself does not affect users; but the portfolio's applications use `panic = "abort"`, so `boundary` catches nothing in their release builds. The README says so beside the `boundary` example (7.15).
 - Crate root: `#![forbid(unsafe_code)]` (unless 2.9 applies), `#![deny(missing_docs)]`, `#![cfg_attr(docsrs, feature(doc_cfg))]`, `pub const VERSION`. **Adapted:** `#![deny(unsafe_code)]` with `#[allow(unsafe_code)]` on `mod raw` only (6.9); `#![no_std]` with `extern crate alloc;` and `#[cfg(feature = "std")] extern crate std;`; `#![deny(unsafe_op_in_unsafe_fn)]`.
 - CI as in the portfolio template: matrix Linux/macOS/Windows × stable/MSRV; fmt; clippy with default, all, and no default features under `-D warnings`; tests in the same three modes; examples build; `cargo doc` under `RUSTDOCFLAGS=-D warnings`; a security job with `cargo audit` and `cargo deny check`. **Adapted (added):** aarch64 runners; a Miri job (`cargo +nightly miri test`, with `-Zmiri-strict-provenance`, once with Stacked Borrows and once with `-Zmiri-tree-borrows`); a `loom` job; a `no_std` job (`cargo build --no-default-features --target thumbv7em-none-eabihf`); the `panic = "abort"` subprocess test; an AddressSanitizer job on Linux (nightly).
 - Local gate before every push, on Windows and in WSL Ubuntu, stable and MSRV: fmt, clippy (all three feature modes), tests, `cargo doc` with default **and** all features, `cargo package` in a fresh target directory. Never pipe check commands through `tail`. **Adapted (added):** Miri on the `raw` tests locally before any change to `src/raw.rs` is pushed.
@@ -421,11 +421,11 @@ Copied from the library standard section 2, adapted only where report-err genuin
 | 0.9 | beta and release candidates |
 | 1.0 | stable: API frozen until 2.0, full audit passed |
 
-No series is skipped. An MSRV raise is a major change after 1.0. **Adapted:** 0.3 "core" is the anyhow-parity surface, so kraken can migrate at 0.3 (section 14).
+No series is skipped. An MSRV raise is a major change after 1.0. **Adapted:** 0.3 "core" is the anyhow-parity surface, so the compiler can migrate at 0.3 (section 14).
 
 ### 6.15 Git and authorship
 
-- Commits as `James Gober <me@jamesgober.com>` (`git -c user.name=... -c user.email=...`). No co-author lines; never "Claude", "AI", "generated", or "Anthropic" anywhere.
+- Commits as `James Gober <me@jamesgober.com>`.
 - Stage explicit paths, never `git add -A`. Check `git log origin/main..HEAD --format='%an <%ae> | %B'` before every push.
 - Never `--no-verify`, never force-push, never delete branches or tags without asking.
 - Every design decision goes into `dev/PLAN.md`'s decision log in the same change.
@@ -606,7 +606,7 @@ Three representations were compared on 2026-10-22 with a probe program compiled 
 What the numbers say:
 
 1. **The success path is not the reason.** On x86_64 the Rust calling convention returns a two-word `Result` in registers, and the measured differences (within 9% in both directions) are noise. the error suite plan section 6 said one word "keeps the success path fast"; the measurement does not support that on this target, and this plan does not repeat the claim. It should be re-measured on aarch64 at 0.6.
-2. **The reasons are memory and parity.** `Result<()>` is the most common return type in application code (in kraken's two anyhow files, `compiler/src/main.rs` and `compiler/src/modules/loader.rs`, 63 of the 75 functions returning `Result` return `Result<()>`, counted 2026-10-22), and every one of them is 8 bytes with anyhow. A drop-in replacement that doubles that is a regression users can measure: in structs that keep a result, in `Vec<Result<(), Error>>` from parallel jobs, in channel messages, in `Option<Error>` fields, and in report-err's own children, suppressed, and `Errors` lists, which halve in size under A.
+2. **The reasons are memory and parity.** `Result<()>` is the most common return type in application code (in the compiler's two anyhow files, `compiler/src/main.rs` and `compiler/src/modules/loader.rs`, 63 of the 75 functions returning `Result` return `Result<()>`, counted 2026-10-22), and every one of them is 8 bytes with anyhow. A drop-in replacement that doubles that is a regression users can measure: in structs that keep a result, in `Vec<Result<(), Error>>` from parallel jobs, in channel messages, in `Option<Error>` fields, and in report-err's own children, suppressed, and `Errors` lists, which halve in size under A.
 3. **C keeps one word safely but pays a second allocation on every error**, about 21-23 ns [measured], which doubles creation cost and fails NFR-2 and the 5% creation target against anyhow (11.1). C is rejected.
 4. **The risk of A is bounded and known**: about 250 lines, the same technique anyhow (1.08 billion downloads on crates.io, 2026-10-22) and eyre have shipped for years, the invariants in 7.3 each tested, Miri in CI under both aliasing models.
 
@@ -1025,7 +1025,7 @@ for cause in error.chain() { eprintln!("  because: {cause}"); }
 **Add a hint for the person reading the report:**
 
 ```rust
-let config = load(path).suggestion("run `kraken init` to create one")?;
+let config = load(path).suggestion("run `myapp init` to create one")?;
 ```
 
 **Return it from `main`:**
@@ -1148,7 +1148,7 @@ let user = cache.get(&id).coded(UserError::NOT_FOUND)?;
 // CTX-04
 let bytes = read_blob(id)
     .note(format!("blob {id} is referenced by {count} pages"))
-    .suggestion("run `hive repair --blobs`")?;
+    .suggestion("run `myapp repair --blobs`")?;
 
 // CTX-05
 let rows = query(sql).attach(RequestId(req.id)).attach(Sql(sql.to_owned()))?;
@@ -1208,7 +1208,7 @@ let sigs = load_signatures().map_err(|e| err!(e)).context("invalid FFI signature
 | CHN-06 | `Chain::rev(self)` (double-ended through a bounded buffer of `max_chain` links) | T3 | P2 | 0.5 | innermost first |
 
 ```rust
-// Exactly the loop kraken's test helper uses today (compiler/src/main.rs:1022):
+// Exactly the loop the compiler's test helper uses today (compiler/src/main.rs:1022):
 for (index, cause) in error.chain().enumerate() {
     let text = cause.to_string();
     if index > 0 { combined.push_str("\ncaused by: "); }
@@ -1385,7 +1385,7 @@ report_err::configure_catalogs(&[DbError::CATALOG, UserError::CATALOG])?;   // o
 | TST-02 | `testing::CountingHook` (a creation hook that counts calls, for tests of R25 wiring) | T3 | P3 | after 1.0 |
 
 ```rust
-// MAIN-02 with tokio, as kraken's compiler runs today
+// MAIN-02 with tokio, as the compiler runs today
 #[tokio::main]
 async fn main() -> report_err::ExitReport {
     run().await.into()
@@ -1453,15 +1453,15 @@ s/\banyhow!(/err!(/g      (only in files that imported the macro by name)
 | `downcast_ref::<T>()` on a source deeper than the root | `None`, as anyhow; use `find::<T>()` for a tree search | parity, plus a better tool |
 | Exit status from `main` | unchanged (1) unless `ExitReport` is used | opt-in |
 
-#### 8.14.3 kraken, worked through
+#### 8.14.3 A compiler, worked through
 
-Usage found on 2026-10-22 in the kraken repository:
+Usage found on 2026-10-22 in the compiler's repository:
 
 | Location | Usage | Count | Migration |
 |---|---|---|---|
-| `kraken/Cargo.toml` (workspace) | `anyhow = "1.0"` | 1 | replace with `report-err` |
-| `kraken/compiler/Cargo.toml` | `anyhow = { workspace = true }` | 1 | rename the workspace dependency |
-| `kraken-lsp/Cargo.toml` | `anyhow = "1.0"` | 1 | **no source file in `kraken-lsp` uses anyhow**; remove the dependency rather than migrate it |
+| `Cargo.toml` (workspace) | `anyhow = "1.0"` | 1 | replace with `report-err` |
+| `compiler/Cargo.toml` | `anyhow = { workspace = true }` | 1 | rename the workspace dependency |
+| the language server's `Cargo.toml` | `anyhow = "1.0"` | 1 | **no source file in the language server uses anyhow**; remove the dependency rather than migrate it |
 | `compiler/src/main.rs`, `compiler/src/modules/loader.rs` | `use anyhow::{Context, Result};` | 2 | `use report_err::{Context, Result};` |
 | same two files | `anyhow::bail!(...)` | 26 | `report_err::bail!(...)` |
 | same two files | `anyhow::anyhow!(...)` | 8 | `report_err::err!(...)`; the 4 inside `.ok_or_else(\|\| ...)` can become `.context(...)` |
@@ -1472,7 +1472,7 @@ Usage found on 2026-10-22 in the kraken repository:
 | `compiler/src/main.rs:118` | `#[tokio::main] async fn main() -> Result<()>` | 1 | unchanged, or `-> report_err::ExitReport` with `run().await.into()` for category exit codes |
 | anywhere | `anyhow::Error` by name, `ensure!`, `downcast` | 0 | nothing to do |
 
-All 71 uses (2 imports, 26 `bail!`, 8 `anyhow!`, 22 `context`, 12 `with_context`, 1 `chain`) are expected to compile after the find-and-replace pass with no hand edits, because none of them touches a difference listed in 8.14.2. That is a design claim until the 0.8 alpha (section 14) proves it by migrating kraken on a branch and running its test suite, which includes the chain-inspecting test at `main.rs:1022`.
+All 71 uses (2 imports, 26 `bail!`, 8 `anyhow!`, 22 `context`, 12 `with_context`, 1 `chain`) are expected to compile after the find-and-replace pass with no hand edits, because none of them touches a difference listed in 8.14.2. That is a design claim until the 0.8 alpha (section 14) proves it by migrating the compiler on a branch and running its test suite, which includes the chain-inspecting test at `main.rs:1022`.
 
 #### 8.14.4 From eyre and color-eyre
 
@@ -1922,7 +1922,7 @@ Kept in `docs/STABILITY-1.0.md` from 0.9: every FR and NFR id with the names of 
 |---|---|---|
 | `README.md` | from the README template: header image, badges (MSRV included), pitch ("dynamic errors for applications: the anyhow you know, plus codes, traces, attachments, and exit codes"), features, install, quick start with Tier 1 only (8.2), a migration teaser (the 8.14.1 table), the `panic = "abort"` note beside `boundary`, status, documentation links, license, footer | 0.1, rewritten at 0.3 and 0.5 |
 | `docs/API.md` | metrics-lib format: nested table of contents, every public item with signature, description, parameters, errors, cost, and several examples per use case; the version each item arrives in | 0.2 (design lock), updated every version |
-| `docs/MIGRATING.md` | 8.14 in full: rules, the sed pass, differences, the kraken worked example, eyre and color-eyre, snafu's `Whatever` | 0.3, kraken result added at 0.8 |
+| `docs/MIGRATING.md` | 8.14 in full: rules, the sed pass, differences, the compiler worked example, eyre and color-eyre, snafu's `Whatever` | 0.3, the compiler result added at 0.8 |
 | `docs/UNSAFE.md` | the `raw` module: layout, vtable, invariants I-1 to I-14 with the test for each, Miri commands, what changed in each version | 0.3 |
 | `docs/ARCHITECTURE.md` | 7.1 to 7.7 and 7.16 with diagrams: layout, flat frames, the extension block, walks, hooks | 0.5 |
 | `docs/PERFORMANCE.md` | 11.1 to 11.4 measured: numbers, hardware, method, allocators, assembly notes, footprint | 0.6 |
@@ -1934,7 +1934,7 @@ Kept in `docs/STABILITY-1.0.md` from 0.9: every FR and NFR id with the names of 
 | rustdoc | every public item with a runnable example; crate docs open with Tier 1 (8.2) and the formatting rules (7.8); `doc(cfg)` badges on `std`-only items | every version |
 | `examples/` | `quick_start.rs`, `context.rs`, `codes.rs`, `exit_report.rs` and the `exit_*.rs` set (12.8), `attachments.rs`, `validation.rs` (`Errors`, `collect_all`), `cleanup.rs` (`with_cleanup`, `suppress`), `boundary.rs`, `migrate_from_anyhow.rs` | grows per version |
 
-The writing rules of 6.12 apply to every file: plain and specific, no em dash, no emoji, none of the four banned marketing words, no `.dev/` reference.
+The writing rules of 6.12 apply to every file: plain and specific, no em dash, no emoji, none of the four banned marketing words, no reference to private working files.
 
 ---
 
@@ -1973,7 +1973,7 @@ API: ROOT-02, ROOT-03 · ERR-01 to ERR-10, ERR-17 · CTX-01, CTX-02 · MAC-01 to
 - `ExitReport`'s terminal escaping is not in 0.3 (no `ExitReport` yet); `{:?}` through std's `Termination` prints raw text, as anyhow does.
 - No L1 dependency yet: 0.3 has no codes, so it does not wait for L1's publication.
 
-**Exit:** a kraken branch migrated by the 8.14.1 pass compiles and passes its tests (trial; the merge happens at 0.8); edge cases E-1 to E-49 and E-57 to E-65 that apply to the 0.3 surface pass.
+**Exit:** a compiler branch migrated by the 8.14.1 pass compiles and passes its tests (trial; the merge happens at 0.8); edge cases E-1 to E-49 and E-57 to E-65 that apply to the 0.3 surface pass.
 
 ### 0.4.0 - Extended: codes, sections, attachments, trace, exit codes
 
@@ -1983,7 +1983,7 @@ API: ROOT-04 · ERR-11 to ERR-15, ERR-18 · CTX-03 to CTX-06 · MAC-04 · ATT-01
 - Code lookup through `identify` and `innermost_code` (7.7, 7.17), catalogs (CFG-05), `from_info` (ERR-18, HOOK-05); `ExitReport` with exit-code selection and terminal escaping (7.14, T6); backtraces (7.13); trace and trail (7.9); attachments and sections (7.10); the remaining `{:?}` blocks.
 - Edge cases E-50 to E-56, E-66 to E-80, E-93, E-94.
 
-**Exit:** a CLI (cli-forge or hive-exec, James's choice) builds against 0.4 with `fn main() -> ExitReport` and category exit codes.
+**Exit:** a CLI (cli-forge or another, James's choice) builds against 0.4 with `fn main() -> ExitReport` and category exit codes.
 
 ### 0.5.0 - Feature complete
 
@@ -2015,8 +2015,8 @@ API: ERR-16 · CTX-07 · CHN-03 to CHN-06 · GRP-01 to GRP-07 · SUP-01 to SUP-0
 
 ### 0.8.0 - Alpha
 
-- kraken migrated for real: the 8.14.3 pass merged on a branch James reviews, kraken's full test suite green, `kraken-lsp`'s unused anyhow dependency removed.
-- One more application migrated (a Hive DB tool or WASP boot code), using codes, `ExitReport`, and `report()`.
+- The compiler migrated for real: the 8.14.3 pass merged on a branch James reviews, its full test suite green, the language server's unused anyhow dependency removed.
+- One more application migrated (a database tool or service boot code), using codes, `ExitReport`, and `report()`.
 - API review against real use; changes made now, not after 1.0.
 
 **Exit:** both migrations green; every surprise fixed or recorded in `docs/MIGRATING.md`.
@@ -2080,9 +2080,9 @@ report-err 1.0 is done when every line below is true and recorded in `docs/STABI
 9. `unsafe` only in `src/raw.rs`, every block with a `SAFETY:` comment, every invariant I-1 to I-14 tested, Miri clean under Stacked Borrows and Tree Borrows with strict provenance, ASan clean; or, if James chose RD-3 option B, `#![forbid(unsafe_code)]` at the crate root.
 10. `size_of::<Result<(), Error>>() == size_of::<usize>()` asserted at compile time (option A).
 11. The `no_std` + `alloc` build passes on `thumbv7em-none-eabihf` and the 7.19 `no_std` column passes its tests.
-12. kraken migrated and green (0.8); the anyhow parity suite green.
+12. The compiler migrated and green (0.8); the anyhow parity suite green.
 13. CI green on Linux, macOS, Windows (x86_64 and aarch64), stable and the MSRV; Miri, loom, `no_std`, abort-subprocess, and security jobs green.
-14. README, `docs/API.md`, and every document in section 13 complete and matching the build; no banned words, no U+2014, no emoji, no `.dev/` reference in public files.
+14. README, `docs/API.md`, and every document in section 13 complete and matching the build; no banned words, no U+2014, no emoji, no reference to private working files in public files.
 15. The simplicity review (6.10) passed at the 1.0 audit: every Tier 1 use is one or two lines a newcomer can read.
 16. The release routine (section 15) completed for 1.0.0, docs.rs build green.
 
@@ -2102,7 +2102,7 @@ Each decision has a recommendation. The recommendation stands unless James overr
 | RD-6 | **`boundary` closure bound** | `UnwindSafe` (std's choice); take any `FnOnce` and wrap it in `AssertUnwindSafe` internally | **`UnwindSafe`.** The caller who wraps a closure in `AssertUnwindSafe` makes the claim knowingly; hiding it would let broken state be observed silently. The README example shows the wrapper. |
 | RD-7 | **R3's `.ok_or_code(Code)` name** | `ok_or_code` on `Option` only; `coded` on both `Result` and `Option` | **`coded` on both.** One verb with one meaning ("this result, coded as X") is simpler to learn than two (6.10). |
 | RD-8 | **Configuring budgets** | write-once global `configure(Limits)`; per-error limits only; compile-time constants only | **Write-once global plus the defaults**, the `set_logger` pattern already used by L1's facade: one acquire load to read, no mutation after start, `AlreadyConfigured` on a second call. Per-error limits would make every builder call heavier; constants would break 2.16 ("every limit configurable"). |
-| RD-9 | **MSRV and edition** | 1.81 with edition 2021 (L1's choice, L1 OD-2); 1.85 with edition 2024 (portfolio default) | **Follow L1: 1.81 / 2021.** L1 caps every error crate's MSRV; kraken, the first migration, is at 1.80 and would move one minor version instead of five. Nothing in report-err needs more than 1.81: `core::error::Error` 1.81, `offset_of!` 1.77, `#[diagnostic::on_unimplemented]` 1.78, `Backtrace` 1.65, `Termination` 1.61, `cfg(panic)` 1.60. If James sets L1 to 1.85, report-err follows (edition 2024). The MSRV clippy gate applies: run `cargo +1.81 clippy` locally, not only `build`. |
+| RD-9 | **MSRV and edition** | 1.81 with edition 2021 (L1's choice, L1 OD-2); 1.85 with edition 2024 (portfolio default) | **Follow L1: 1.81 / 2021.** L1 caps every error crate's MSRV; the downstream compiler, the first migration, is at 1.80 and would move one minor version instead of five. Nothing in report-err needs more than 1.81: `core::error::Error` 1.81, `offset_of!` 1.77, `#[diagnostic::on_unimplemented]` 1.78, `Backtrace` 1.65, `Termination` 1.61, `cfg(panic)` 1.60. If James sets L1 to 1.85, report-err follows (edition 2024). The MSRV clippy gate applies: run `cargo +1.81 clippy` locally, not only `build`. |
 | RD-10 | **`ensure!` operand values** (`left: 3, right: 4`) | at 1.0; after 1.0 | **After 1.0 (P3).** It needs a token-tree parser in `macro_rules!` that adds compile time to every use; the plain condition text covers the need. The bare-condition text format is chosen so it can be extended without breaking. |
 | RD-11 | **Visibility and collection** | public in `error-collection`; private | **Public, `error-collection`.** It replaces anyhow in public portfolio crates' binaries and tests and holds nothing proprietary. |
 | RD-12 | **`{:?}` layout** | anyhow's layout plus new blocks after it; a new layout | **anyhow's layout first** (`Caused by:` with anyhow's numbering), new blocks after, so reports look familiar and anyhow-era log parsers keep working on the first lines. |
@@ -2164,7 +2164,7 @@ URLs were checked on 2026-10-22 unless marked (*), which marks a reference cited
 - The portfolio's library standard (the standard this plan follows) and `REPS.md`.
 - The error collection plan (the split into L1 to L7, research additions R1 to R26, what can never be observed, the coms bridge and kind masks) and the earlier error suite plan (decision E-2 on the representation).
 - define-err's plan ([`jamesgober/define-err`](https://github.com/jamesgober/define-err), L1; the interface of 3.4 is requested from it).
-- kraken (the first migration target: `kraken/compiler/src/main.rs`, `kraken/compiler/src/modules/loader.rs`, `kraken/Cargo.toml`, `kraken/compiler/Cargo.toml`, `kraken-lsp/Cargo.toml`).
+- A downstream compiler (the first migration target: `compiler/src/main.rs`, `compiler/src/modules/loader.rs`, the workspace `Cargo.toml`, `compiler/Cargo.toml`, the language server's `Cargo.toml`).
 - Probe programs used for 7.4 and 11.4 (not part of any crate; reproducible from the descriptions in 7.4 and 11.4).
 
 ---
@@ -2191,7 +2191,7 @@ Defence ideas are recorded as hypothesis, method, and expected cost (6.4); secti
 | D-002 | 2026-10-22 | The main type is `Error`, not `Fault` (reverses RD-2's recommendation). The API ids `FLT-01` to `FLT-18` become `ERR-01` to `ERR-18`; the failure collection `Faults` becomes `Errors`; the private `RawFault` becomes `RawError` | James does not like `Fault` and wants migrating from anyhow to be a change of crate name: `anyhow::Error`, `anyhow::Result`, `Context`, `bail!`, and `ensure!` keep their names. The coexistence case RD-2 worried about is served by `use report_err::Error as Report;` |
 | D-003 | 2026-10-22 | An `Error` dereferences (`Deref`, `DerefMut`, `AsRef<dyn Error + Send + Sync>`, `AsRef<dyn Error>`) to a `dyn Error` whose `source()` walks every context layer, then the root error, then the root's own sources (reverses RD-4's trade-off). The store stays flat; each frame carries a copy of its node pointer and finds the layer below it by address comparison (7.6.1, invariant I-12). The cost is measured at the `0.2.0` design lock; if one-word size or an allocation count of 7.5 would have to change, James gets the numbers and the options first | James's requirement: an `Error` must work wherever a `&dyn Error` is expected, as anyhow's does, with no trade-off. The stored node pointer (instead of pointer arithmetic from `&self`) keeps the design sound under Stacked Borrows and Tree Borrows with strict provenance; address comparison needs no provenance; no frame points at another, so frames can move inside `Ext` |
 | D-004 | 2026-10-22 | Consequences of D-003 for the L1 interface (3.4): X-7 is reduced to an optional request (`ErrorRecord::from_error(&**error)` already sees every layer); X-8's main path is `report_with(&**error, severity, kinds)` with no allocation, and `report_record` remains a request only so reporters can see sections and the trail. `into_std()` becomes one allocation in all instead of one per layer | the real chain makes the temporary nested chain of the original fallbacks unnecessary |
-| D-005 | 2026-10-22 | MSRV 1.81, edition 2021 (RD-9 as recommended) | define-err's MSRV (its OD-2): `core::error::Error` in `core` is stable from 1.81 and the `no_std` build needs it; kraken (1.80) moves one minor version. If define-err moves to 1.85, report-err follows with edition 2024 |
+| D-005 | 2026-10-22 | MSRV 1.81, edition 2021 (RD-9 as recommended) | define-err's MSRV (its OD-2): `core::error::Error` in `core` is stable from 1.81 and the `no_std` build needs it; the downstream compiler (1.80) moves one minor version. If define-err moves to 1.85, report-err follows with edition 2024 |
 | D-006 | 2026-10-22 | CI from `0.1.0`: the test matrix on Linux, macOS, and Windows, each on x86_64 and aarch64, on stable and 1.81 (fmt, clippy and tests in three feature modes, examples, docs in three feature modes); `no_std` build for `thumbv7em-none-eabihf` on stable and 1.81; Miri with strict provenance under Stacked Borrows and Tree Borrows; loom (`--cfg loom`); package; `cargo audit` and `cargo deny` | 6.13; the jobs exist before the code they guard, so the first `unsafe` line in 0.3 lands under Miri. `cargo doc` also runs with `--no-default-features` because a doc link to a `std`-only item breaks only there (15) |
 | D-007 | 2026-10-22 | The crate root refuses targets without pointer-sized atomic compare-and-swap with a `compile_error!` naming the reason, from `0.1.0` | 7.19: the write-once configuration and the `reported` flag need it; a clear message at build time beats a missing-symbol error later |
 | D-008 | 2026-10-22 | The macro is written `err!` throughout this plan, pending RD-18 at the design lock | `fault!` no longer matches the type (D-002); `error!` collides with `log` and `tracing` |
@@ -2250,12 +2250,12 @@ Defence ideas are recorded as hypothesis, method, and expected cost (6.4); secti
 | D-061 | 2026-11-06 | The soak counts live heap bytes with its own allocator and passes only when they stay within 1 MiB in each half and return within 64 KiB of the start once the workers stop; resident memory is still judged, at 1%, after a warm-up of a quarter of each half (was 5 minutes) | the first Windows soak failed at +1.75% in the plain half: the working set rose 4.5% in the first 20 minutes, 0.5% in the next 80, and 0.3% in the last 135, while 25 billion rounds ran. A leak in any path a round takes would grow in step with the rounds, by gigabytes; this curve is the system heap settling. The hook half, started on the settled heap, moved -0.04%, and Linux moved +0.00% in both halves. Resident memory alone cannot tell the two apart; an exact count can. A 2-minute run of 188 million rounds ended 128 bytes from where it started. Cost: two relaxed atomic adds per allocation in the soak binary, spread over 64 counters; nothing in the library |
 | D-062 | 2026-11-07 | The three timeouts of the second 24-hour fuzz run are recorded as scheduling, not findings; all three targets run 24 hours again on the release code, with a 1800-second timeout | replayed under AddressSanitizer the inputs ran 5.8 s (`ops`), 1.0 s (`display_adversary`), and 1 ms (`limits`); in the run they passed 300 s because the fuzzers run at `nice 19` on a machine with a load average of 30 to 49 from other work, where a nice-19 process gets about 1.5% of a core against each normal one. `ops` stopped after about 6.5 of its 24 hours, `display_adversary` 12 minutes short, and `limits` ran all 24 with one timeout. 1800 s still catches a hang: a real one runs until the run ends. Cost: one more day before 0.7.0 |
 | D-063 | 2026-11-07 | The repeat buffer (`Tail`) stops at `max_render` only for guarded output: `render`, `record`, and `ExitReport` capture a link through `capture_limited`, an out-of-line function whose `Limited` wrapper reads the limit once and fails every write past it; `{:#}` and `{:?}` write to the buffer as in 0.6.0, and `Display` and `write_chain` are 0.6.0's | D-055 put the check in the buffer itself, and CI measured `{:#}` (B12) 5 to 8% slower than 0.6.0 on all three platforms and `{}` (B11) 9 to 12% slower on x86_64. Four changes were measured on the way: reading the limit once per buffer, then only after the buffer wrapped, then a guarded wrapper inlined into `capture` (B12 and B13 got slower still, up to 20% on x86_64: the larger frame cost the unguarded path), then `write_chain` out of line (B11 faster, B12 slower: the plain mode was no longer known inside it). What stays is the smallest change to the unguarded path, one predictable branch. Measured on Windows at high priority on one core, the mean of three alternating runs against 0.6.0: B11 -7%, B12 +2.5%, B13 +2.8% (+0.5% without one low base run), B13 with one layer -0.6%. Security impact: none; `{}`, `{:#}`, and `{:?}` are unguarded by design (docs/SECURITY.md), and every guarded path still stops at `max_render` |
-| D-064 | 2026-11-08 | `tests/` is no longer `export-ignore`d in `.gitattributes` | `Cargo.toml` declares the `exit` and `oom` tests (`harness = false`), and cargo refuses to read a manifest whose declared target files are missing, so every `git archive` tarball, including GitHub's release "Source code" downloads, failed at the first cargo command; found when the kraken trial built report-err from `git archive`. The crates.io package was not affected (`cargo package` reads the working tree). Cost: the tarball grows by the tests |
+| D-064 | 2026-11-08 | `tests/` is no longer `export-ignore`d in `.gitattributes` | `Cargo.toml` declares the `exit` and `oom` tests (`harness = false`), and cargo refuses to read a manifest whose declared target files are missing, so every `git archive` tarball, including GitHub's release "Source code" downloads, failed at the first cargo command; found when the compiler trial built report-err from `git archive`. The crates.io package was not affected (`cargo package` reads the working tree). Cost: the tarball grows by the tests |
 | D-065 | 2026-11-08 | The pull-request benchmark gate measures the base branch and the head in turn, three rounds of each (report-err's own rows only), on the same runner, and fails only when a time is more than 5% and 1 ns slower than the base's median in all three rounds; the single-comparison gate of D-058 stays the strict form for a quiet machine | the single comparison failed on four runs in a row of the 0.7 branch, each time on a different row and platform (B12 on aarch64, then Windows, then B13 on x86_64), and a quick run on this machine put B11 at +6.3% where pinned, alternated runs measured -7%. Noise does not repeat in three alternated rounds; a regression does. Each round compiles nothing: both sides' benchmark executables are built once, in their own target directories. Cost: about 15 more minutes per platform job |
 | D-066 | 2026-11-09 | `ops`'s sixth fuzz run, stopped at 22 hours 11 minutes by a spurious timeout, is completed by a run of the remaining time from its corpus on the same code | at 08:29 UTC libFuzzer reported a timeout with the unit "working ... for -1 seconds": the WSL clock stepped back (journald logged "Time jumped backwards" through the night) and libFuzzer's unsigned elapsed time wrapped past the 1800-second limit. Replayed under AddressSanitizer the input ran 6.2 s and 7.8 s at a load average of 92 on 32 cores, faster than each of the seven slow units the same run kept (8.6 to 45 s, the harness re-rendering the error at every step, D-060). `display_adversary` and `limits` ran their 24 hours with nothing found. Cost: two hours |
 | D-067 | 2026-11-11 | 0.8.0 is a simplicity release: `unraisable` becomes `report_unhandled`, `with_kind` becomes `with_kinds`, and `Error::with_note`, `Error::with_warning`, `Error::with_suggestion`, `Error::into_std`, `Errors::finish_with`, and `Error::find_in_suppressed` are removed | James, 2026-11-11: the API may be simplified, renames included, before 1.0. The audit (`dev/SIMPLICITY-AUDIT.md`) found two names a newcomer cannot read (a Python term; a singular name for a set) and six methods that only repeat another (an eager closure on a value that exists; a method beside `From`; `finish` then `Ok`; a one-line `find_map`). The anyhow names stay even where they repeat each other (`err!` and `format_err!`, D-017; `new`, `msg`, `From`; `is`; `root_cause`), because moving from anyhow stays a change of crate name (D-002). Cost: a compile error at each old name, with the replacement in `docs/MIGRATING.md`; no crate depends on report-err yet. Performance and security: none; no code path changed |
 | D-068 | 2026-11-11 | `docs/API.md` is rewritten as a task-by-task reference of every public item, in the format the collection's other libraries use, and `lib.rs` includes it under `cfg(doctest)` | it was the 0.2 design-lock document: items as planned, examples never compiled. Compiled examples keep the reference true to the build. The item ids, grades, and versions stay in section 8 of this plan. Cost: the doc tests take longer to run |
-| D-069 | 2026-11-11 | report-err depends on define-err 0.9 (was 0.5) | report-err re-exports define-err's `Code`, `Severity`, `Category`, and `Kinds`; kraken's migration pull request is on define-err 0.9, so with report-err on 0.5 one build would hold two copies of each type, and a code from one would not pass to the other. define-err 0.6 to 0.9.3 changed nothing report-err calls (their changelogs; the full test suite passes unchanged). Cost: none |
+| D-069 | 2026-11-11 | report-err depends on define-err 0.9 (was 0.5) | report-err re-exports define-err's `Code`, `Severity`, `Category`, and `Kinds`; the compiler's migration pull request is on define-err 0.9, so with report-err on 0.5 one build would hold two copies of each type, and a code from one would not pass to the other. define-err 0.6 to 0.9.3 changed nothing report-err calls (their changelogs; the full test suite passes unchanged). Cost: none |
 | D-070 | 2026-11-11 | `Chain`'s `Iterator::next` walks with a const flag that skips the link's text, and `code()` returns a set code inline with the probe out of line (`found_code`) | PR #7's benchmark gate failed on `chain()` (Linux x86_64, +24% to +68% in all three rounds) and on a code set by hand (aarch64, +160% to +187%, 1.8 ns). Neither function changed: define-err 0.6 and later mark the identity probe `#[inline]`, which, under fat LTO, made `code()` too large to inline and moved `chain`'s `next` off the inlined `next_link`, so it computed each link's text and dropped it. Pinned A/B on Linux (WSL, one core, load 60 to 70) of 0.7.0, this branch, and this branch on define-err 0.5 put the cause on define-err 0.9 alone (a set code 2.4 to 2.8 ns against 0.8 to 1.0). With the fix, against 0.7.0, three alternated rounds: `chain()` 1 layer 7.3 to 8.0 ns against 9.6 to 10.6, 3 layers 9.6 to 11.1 against 12.5 to 17.2; a set code 0.75 to 0.84 ns against 0.81 to 0.96; a code found after 3 layers 32 to 35 ns against 55 to 60 (define-err 0.9's faster probe); B11 20 to 22 ns against 24, B12 100 to 105 against 107 to 117, B13 within noise. `next_link`, which the format paths use, is unchanged (D-063). Security impact: none; the same links are walked under the same `max_chain` budget |
 | D-071 | 2026-11-11 | The benchmark gate leaves out `collect/B16 std collect, stops at the first` and `collect/B16 std collect, none failing` | both time only the standard library (`parse` into `Result<Vec<u32>, ParseIntError>`); no report-err code runs in them, but the gate counted every row of a group only report-err has as its own. On PR #7's second run the first was 8.6% to 9.1% slower in all three rounds on Linux x86_64 (+5.6 ns of 65): a change of layout in the benchmark binary, not of report-err. They stay in the table as the reference for `collect_all`. Cost: none |
 | D-072 | 2026-11-11 | The vtable's `payload` for a boxed root projects through the box with `addr_of_mut!` instead of making a shared reference; invariant I-15 says every payload pointer keeps the node pointer's write permission | an independent review of 0.8.0 found that `DerefMut` on an error made by `from_boxed` (or `err!` on a box) with no context layer turned a pointer taken from `&` into `&mut` and wrote through it: undefined behaviour reachable from safe code, rejected by Miri under Stacked Borrows ("only grants SharedReadOnly permission") and Tree Borrows ("the conflicting tag has state Frozen"). One function still serves shared and unique access, so no second vtable entry is needed. `test_raw_deref_mut_boxed_root` and `tests/core.rs` `test_deref_mut_boxed_root_can_write` fail on 0.8.0 under both models and pass now. Cost: none (the same loads, no reference made). Shipped as the patch 0.8.1 |
@@ -2267,7 +2267,7 @@ Defence ideas are recorded as hypothesis, method, and expected cost (6.4); secti
 | D-078 | 2026-11-12 | report-err 0.9.0 depends on define-err 0.10 (was 0.9), and `report()` asks define-err's `would_deliver` instead of reading the minimum severity and the kinds mask itself | define-err 0.10 fixes the identity probe (a probe whose error's `Display` is the probe itself is refused, so std string errors on Rust 1.81 to 1.89 no longer forge one: review F-7, second part, now tested on 1.81 in `test_attack_t12_forged_probe_never_sets_public_text`), drops the public text from the probe (report-err stopped reading it in 0.8.1, D-075), and sets `links`, so a build cannot hold two copies (review F-2). It is a breaking change for report-err's users, since `Code`, `Severity`, `Category`, and `Kinds` are re-exported, so it is a minor release (as D-069 was). `would_deliver` is the rule `report_record` applies, so report-err's copy of it (D-074) goes. Cost: none measured; one load and the mask, as before |
 | D-079 | 2026-11-12 | `configure_catalogs` indexes the catalogs once with define-err's `catalog::Catalog` and looks codes up by binary search; two entries with one code are refused with `ConfigureError::DuplicateCode`, and nothing is set | review F-5: each lookup scanned every entry (define-err measured about 27 us for a late code in 10,000 entries), and `facts()` looks the code up for each of the severity, category, kinds, and public text. With duplicates, the first entry used to answer silently; failing at start-up names both types. Cost: one sort and two allocations at configure time; a lookup is O(log n). Security: a duplicate can no longer let one crate's entry (its public text, its category) answer for another's code |
 | D-080 | 2026-11-12 | With no reporter installed, `report()` returns `false` and leaves the flag unset | review F-8: an error reported before `set_reporter` (start-up, configuration) was marked reported and dropped, so a later `report()` by an outer layer, with a reporter installed by then, did nothing, and the caller was told `true`. That silence is what made the define-err split (review F-2) invisible. Now `true` means a reporter was handed the event (its filter may still drop it). A standard-error fallback, as `report_unhandled` has, was considered and not added: `report()` is for handled errors, and printing them by default would be noise. Cost: none (one load before the flag, instead of after) |
-| D-081 | 2026-11-12 | 0.9.0 is the define-err 0.10 release; the alpha (the kraken and hive-system migrations) moves to 0.10.0, beta to 0.11.0 | define-err 0.10 is a break that report-err must follow in a minor release, and the migrations wait for James's go in other repositories. Shipping the move now keeps report-err usable beside applications on define-err 0.10 (otherwise two copies, review F-2) without holding it on the migrations. Cost: none |
+| D-081 | 2026-11-12 | 0.9.0 is the define-err 0.10 release; the alpha (the two application migrations) moves to 0.10.0, beta to 0.11.0 | define-err 0.10 is a break that report-err must follow in a minor release, and the migrations wait for James's go in other repositories. Shipping the move now keeps report-err usable beside applications on define-err 0.10 (otherwise two copies, review F-2) without holding it on the migrations. Cost: none |
 | D-082 | 2026-11-12 | Reading a code or severity found in the chain costs about 10 to 15 ns more from 0.9.0, and the benchmark gate accepts `codes/code found after 3` and `codes/severity found after 3` for PR #9 within 20 ns a round (`benches/ratios.py` `ACCEPTED`) | define-err 0.10's `identify` formats the probed error's `Display` into a 4-byte writer to refuse forged probes (its changelog: about 16 ns per probe). That check is what makes review F-7 hold on Rust 1.81 to 1.89; report-err cannot skip it without trusting any `description()` again. PR #9's gate: +8 to +14 ns (32% to 49%) for a code found after 3 layers, +3 to +14 ns for its severity, in all three rounds on all three platforms; a pinned A/B on a loaded Linux machine: 34 to 35 ns against 46 to 56. A set code (`coded`) and an error with no probe are unchanged. Caching the found code in the header would need an atomic slot for a few nanoseconds; not done. The `ACCEPTED` entries are for this one pull request and are removed in the next (ROADMAP). Security: the trade is for security, stated here with its cost |
 | D-083 | 2026-11-12 | The gate accepts `collect/B16 collect_all, none failing` for PR #9 within 5 us a round | +10% (+3.5 us of 35) in all three rounds on the Linux x86_64 runner only; aarch64 and Windows did not move. No report-err code on that path changed in 0.9.0, and a pinned A/B on Linux gave head 41.9 to 44.6 us against base 41.2 to 46.2, so it is the binary's layout on that runner, as in D-071. Removed with D-082's entries |
 | D-084 | 2026-11-12 | The gate accepts `inspect/source walk/report-err/3`, `/5`, and `/9` for PR #9 within 4 ns a round | slower on the Windows runner in each of four runs (+1.2 to +3.2 ns, 8% to 16%, about 0.3 ns a link), level on both Linux platforms; `Frame::source` is the same code in base and head (0.8.1 changed only the boxed root's payload, which this walk does not reach), so it is the MSVC linker's layout of a larger binary; the walk calls each link's `source()` through the `dyn Error` vtable, into report-err code unchanged since 0.8.1. A pinned local A/B on Windows was within its own noise (9 layers: head 22.6 to 25.3 ns against base 20.1 to 24.2). One rerun of the same commit showed every small row +22 to +25 ns at once (`chain()` with one layer +468%), which the other two runs and the local A/B did not, so that run was the runner. Removed with D-082's entries |
