@@ -451,8 +451,9 @@ pub(crate) fn report(error: &Error, out: &mut dyn Write, mode: Mode) -> fmt::Res
     let last = links.saturating_sub(1);
     let show = |index: usize, link: &Link<'_>, out: &mut dyn Write, indent: &'static str| match kept
         .filter(|_| index == last)
+        .or(link.text)
     {
-        Some(text) => message(out, mode, indent, &text),
+        Some(text) => message_str(out, mode, indent, text),
         None => message(out, mode, indent, &LinkText(link)),
     };
 
@@ -525,9 +526,10 @@ pub(crate) fn report(error: &Error, out: &mut dyn Write, mode: Mode) -> fmt::Res
             out.write_str("  ")?;
             match (step.kind, step.context) {
                 (StepKind::Origin, _) => out.write_str("(origin)")?,
-                (StepKind::Context, Some(layer)) => {
-                    message(out, mode, "         ", &format_args!("{layer}"))?
-                }
+                (StepKind::Context, Some(layer)) => match frame_text(layer) {
+                    Some(text) => message_str(out, mode, "         ", text)?,
+                    None => message(out, mode, "         ", &format_args!("{layer}"))?,
+                },
                 _ => out.write_str("(trace)")?,
             }
         }
@@ -768,6 +770,27 @@ fn message(
         write!(Controls { inner: out }, "{text}")
     } else {
         write!(out, "{text}")
+    }
+}
+
+/// `message` for a string the error holds itself: no `Display` to guard, so
+/// it is written (or scanned and written) directly, without a formatter.
+fn message_str(out: &mut dyn Write, mode: Mode, indent: &'static str, text: &str) -> fmt::Result {
+    if mode.escape {
+        Escaped { inner: out, indent }.write_str(text)
+    } else if mode.controls {
+        Controls { inner: out }.write_str(text)
+    } else {
+        out.write_str(text)
+    }
+}
+
+/// The text of a context layer that holds a string.
+fn frame_text<'a>(layer: &'a (dyn core::error::Error + 'static)) -> Option<&'a str> {
+    match &layer.downcast_ref::<crate::raw::Frame>()?.value {
+        crate::frame::FrameValue::Static(text) => Some(text),
+        crate::frame::FrameValue::Text(text) => Some(text.as_str()),
+        crate::frame::FrameValue::Value(_) => None,
     }
 }
 
