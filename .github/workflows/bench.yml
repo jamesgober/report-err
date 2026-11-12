@@ -72,9 +72,15 @@ jobs:
         shell: bash
         run: |
           unset RUST_BACKTRACE RUST_LIB_BACKTRACE
-          git worktree add ../base "origin/${{ github.base_ref }}"
+          head="$(git rev-parse HEAD)"
+          # Both sides are built from one worktree path, base first and then
+          # head, so the paths and package ids compiled into them are the
+          # same: built from two paths, identical sources gave binaries laid
+          # out differently, and the gate measured a row 6% slower in every
+          # round with no code changed (D-086).
+          git worktree add ../ab "origin/${{ github.base_ref }}"
           # Only the same suite measures the same thing (D-058).
-          if ! cmp -s benches/benches/compare.rs ../base/benches/benches/compare.rs; then
+          if ! cmp -s benches/benches/compare.rs ../ab/benches/benches/compare.rs; then
             echo "The base branch has another benchmark suite; nothing to compare."
             exit 0
           fi
@@ -88,8 +94,9 @@ jobs:
               if m.get('reason') == 'compiler-artifact' and m.get('executable') and 'bench' in m['target']['kind']:
                   print(m['executable'])"
           }
-          executables > head.txt
-          (cd ../base && CARGO_TARGET_DIR="$RUNNER_TEMP/base-target" executables) > base.txt
+          (cd ../ab && CARGO_TARGET_DIR="$RUNNER_TEMP/base-target" executables) > base.txt
+          git -C ../ab checkout --quiet --detach "$head"
+          (cd ../ab && CARGO_TARGET_DIR="$RUNNER_TEMP/head-target" executables) > head.txt
           # report-err's own rows: its side of each comparison, and the
           # groups only it has. No leading `/`: Git Bash on Windows rewrites
           # such an argument into a path before a program sees it.
