@@ -846,8 +846,29 @@ struct Controls<'a> {
     inner: &'a mut dyn Write,
 }
 
+/// Bytes `Controls` scans before it writes. A writer that fails (a full
+/// `Capped`) then stops the scan, so a long message past `max_render` costs
+/// one chunk more, not its whole length.
+const CHUNK: usize = 4096;
+
 impl Write for Controls<'_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
+        let mut rest = s;
+        while !rest.is_empty() {
+            let mut end = rest.len().min(CHUNK);
+            while !rest.is_char_boundary(end) {
+                end -= 1;
+            }
+            let (chunk, tail) = rest.split_at_checked(end).unwrap_or((rest, ""));
+            self.write_chunk(chunk)?;
+            rest = tail;
+        }
+        Ok(())
+    }
+}
+
+impl Controls<'_> {
+    fn write_chunk(&mut self, s: &str) -> fmt::Result {
         // Fast path: no byte that can start a control character. C1 controls
         // start with 0xC2 and the bidirectional controls with 0xE2; both bytes
         // also start other characters, which then take the slow path.

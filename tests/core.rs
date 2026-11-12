@@ -135,6 +135,20 @@ fn test_debug_and_render_escape_controls() {
         assert!(out.contains("\\u{1b}[2J"), "{out:?}");
     }
     assert!(format!("{error:#}").contains('\u{1b}'));
+    // A message longer than the 4,096-byte scan chunk, with a two-byte
+    // character across the chunk boundary and controls on both sides.
+    let long = format!(
+        "{}\u{1b}{}\u{e9}\r{}",
+        "a".repeat(10),
+        "b".repeat(4084),
+        "c".repeat(5000)
+    );
+    let debug = format!("{:?}", Error::msg(long.clone()));
+    let want = long.replace('\u{1b}', "\\u{1b}").replace('\r', "\\u{d}");
+    assert!(
+        debug.starts_with(&want),
+        "chunked escaping changed the text"
+    );
     // Text without controls is unchanged, including other characters that
     // share a first byte with a control (U+00A0 with C1, U+2014 with the
     // bidirectional controls).

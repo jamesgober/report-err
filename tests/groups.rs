@@ -415,6 +415,7 @@ fn test_render_matches_the_formats() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "megabytes of writes; too slow under Miri (D-024)")]
 fn test_render_stops_at_max_render() {
     let error = err!("{}", "x".repeat(2 << 20));
     let text = rendered(&error, RenderStyle::Report);
