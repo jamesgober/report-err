@@ -13,6 +13,43 @@
 
 ---
 
+## [0.8.1] - 2026-11-12
+
+Fixes from an independent review of 0.8.0. Upgrading is recommended for
+everyone: the first item is a soundness bug reachable from safe code.
+
+### Fixed
+
+- `DerefMut` on an error made by `Error::from_boxed`, or by `err!` on a
+  boxed error, with no context layer, wrote to the boxed error through a
+  pointer made from a shared reference: undefined behaviour, reported by
+  Miri under Stacked Borrows and Tree Borrows. The pointer is now made
+  without a reference, and a Miri test covers the path.
+- A variant's `#[public]` text found through the identity probe no longer
+  becomes the record's public text: any error's `description()` can carry a
+  probe, and on Rust 1.81 to 1.89 std's string errors return their message
+  from it. Public text comes from a catalog entry, a `from_info` root, or
+  the category, so `public_message()` and `record().public` now agree.
+- The README's `Code:` line example shows what is printed.
+
+### Changed
+
+- `{:?}` (what `fn main() -> Result<()>` prints) and `render` write control
+  characters other than newline and tab, and the Unicode bidirectional
+  controls, as `\u{..}` text, so a message cannot move the cursor, clear
+  the screen, or rewrite a line. `{}` and `{:#}` are unchanged.
+- `report()` does not build the record when define-err's minimum severity or
+  kinds mask would drop it.
+
+### Security
+
+- `docs/SECURITY.md` supports 0.8.x only. 0.7.0 and earlier depend on
+  define-err 0.5 or older: beside an application on define-err 0.9, their
+  reports and creation hook go to a define-err copy the application never
+  set up. CI now fails when a build holds two define-err versions.
+
+---
+
 ## [0.8.0] - 2026-11-11
 
 A simpler API: one way to do each thing, plainer names, and a reference
@@ -338,7 +375,8 @@ The scaffold and the plan. No functional code yet.
   cases, open decisions, and the decision log D-001 to D-008),
   `dev/DIRECTIVES.md`, and `dev/ROADMAP.md`.
 
-[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/jamesgober/report-err/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/jamesgober/report-err/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/jamesgober/report-err/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jamesgober/report-err/compare/v0.5.0...v0.6.0

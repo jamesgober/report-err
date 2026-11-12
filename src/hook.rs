@@ -78,6 +78,8 @@ impl Error {
     /// twice. When a reporter is installed it receives the error's
     /// [`record`](Error::record), with every message already written through
     /// the guarded renderer. With none, the cost is the flag and one load.
+    /// When define-err's minimum severity or kinds mask would drop the event,
+    /// the record is not built.
     ///
     /// ```
     /// let error = report_err::err!("request failed");
@@ -90,11 +92,24 @@ impl Error {
         if self.raw.set_flags(REPORTED) & REPORTED != 0 {
             return false;
         }
-        if define_err::is_installed() {
+        if define_err::is_installed() && self.passes_filter() {
             let record = self.record_with(true, Some(Location::caller()));
             define_err::report_record(&record);
         }
         true
+    }
+
+    /// Whether define-err's filter lets an event with this error's severity
+    /// and kinds through: the same test `report_record` makes, done before
+    /// the record is built (D-074).
+    fn passes_filter(&self) -> bool {
+        if let Some(min) = define_err::min_severity() {
+            if self.severity().get() < min.get() {
+                return false;
+            }
+        }
+        let mask = define_err::kinds_mask();
+        mask == Kinds::ALL || self.kinds().intersects(mask)
     }
 
     /// Whether [`report`](Error::report) has run.
@@ -134,11 +149,11 @@ impl Error {
     ) -> ErrorRecord {
         let mut record =
             ErrorRecord::new(self.code(), self.severity(), self.category(), self.kinds());
+        // Public text only from a catalog entry, a `from_info` root, or the
+        // category, never from an identity probe found on a link: any
+        // `description()` can carry a probe (D-075).
         if let Some(text) = self.public_message() {
             record.public = Cow::Borrowed(text);
-        }
-        if let Some(text) = self.identity_public() {
-            record.public = Cow::Owned(text);
         }
         let frames = self.raw.frames();
         for (index, link) in self.chain().enumerate() {

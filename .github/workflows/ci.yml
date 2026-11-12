@@ -233,6 +233,15 @@ jobs:
       - name: Package
         run: cargo package
 
+  one-define-err:
+    name: One define-err in the tree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: No second define-err version
+        run: bash ci/one-define-err.sh
+
   security:
     name: Security (audit + deny)
     runs-on: ubuntu-latest

@@ -16,26 +16,38 @@ use crate::trace::StepKind;
 pub(crate) struct Mode {
     /// Control characters escaped and continuation lines indented (T6).
     pub(crate) escape: bool,
+    /// Control characters escaped, continuation lines as written (D-073).
+    /// Implied by `escape`.
+    pub(crate) controls: bool,
     /// Each `Display` guarded: a panic prints `<display panicked>` and a
     /// failure `<display failed>`, and the rendering goes on.
     pub(crate) guard: bool,
 }
 
 impl Mode {
-    /// `{:?}`: as written, not guarded.
+    /// `{:#}`: as written, not guarded.
     pub(crate) const PLAIN: Mode = Mode {
         escape: false,
+        controls: false,
         guard: false,
     };
-    /// `render`, `record`, `report`: guarded.
+    /// `{:?}`: not guarded; control characters in messages escaped.
+    pub(crate) const DEBUG: Mode = Mode {
+        escape: false,
+        controls: true,
+        guard: false,
+    };
+    /// `render`: guarded; control characters in messages escaped.
     pub(crate) const GUARDED: Mode = Mode {
         escape: false,
+        controls: true,
         guard: true,
     };
     /// `ExitReport` and `report_unhandled`: guarded and escaped for a terminal.
     #[cfg_attr(not(feature = "std"), allow(dead_code))]
     pub(crate) const TERMINAL: Mode = Mode {
         escape: true,
+        controls: true,
         guard: true,
     };
 }
@@ -377,9 +389,10 @@ impl Debug for Error {
     }
 }
 
-/// `{:?}`: the report (anyhow's layout first, then report-err's blocks).
+/// `{:?}`: the report (anyhow's layout first, then report-err's blocks), with
+/// control characters other than newline and tab escaped (D-073).
 fn write_report(error: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    report(error, f, Mode::PLAIN)
+    report(error, f, Mode::DEBUG)
 }
 
 /// Cause `n` is skipped as a repeat (`n` below the 4,096 links `max_chain`
@@ -438,8 +451,9 @@ pub(crate) fn report(error: &Error, out: &mut dyn Write, mode: Mode) -> fmt::Res
     let last = links.saturating_sub(1);
     let show = |index: usize, link: &Link<'_>, out: &mut dyn Write, indent: &'static str| match kept
         .filter(|_| index == last)
+        .or(link.text)
     {
-        Some(text) => message(out, mode, indent, &text),
+        Some(text) => message_str(out, mode, indent, text),
         None => message(out, mode, indent, &LinkText(link)),
     };
 
@@ -512,9 +526,10 @@ pub(crate) fn report(error: &Error, out: &mut dyn Write, mode: Mode) -> fmt::Res
             out.write_str("  ")?;
             match (step.kind, step.context) {
                 (StepKind::Origin, _) => out.write_str("(origin)")?,
-                (StepKind::Context, Some(layer)) => {
-                    message(out, mode, "         ", &format_args!("{layer}"))?
-                }
+                (StepKind::Context, Some(layer)) => match frame_text(layer) {
+                    Some(text) => message_str(out, mode, "         ", text)?,
+                    None => message(out, mode, "         ", &format_args!("{layer}"))?,
+                },
                 _ => out.write_str("(trace)")?,
             }
         }
@@ -646,7 +661,9 @@ impl Error {
     /// Each `Display` is guarded: one that panics (with `std` and unwinding)
     /// prints `<display panicked>`, one that fails prints
     /// `<display failed>`, and the rest goes on. Output stops at
-    /// `max_render` bytes with `(report truncated)`.
+    /// `max_render` bytes with `(report truncated)`. Control characters
+    /// other than newline and tab, and the bidirectional controls, are
+    /// written as `\u{..}` text, as in `{:?}`.
     ///
     /// # Errors
     ///
@@ -675,9 +692,16 @@ impl Error {
             full: false,
         };
         let mode = Mode::GUARDED;
+        // The report escapes each message where it writes it (`message`);
+        // the one-line styles are all message text, so the whole output
+        // goes through `Controls`.
         let result = match style {
-            RenderStyle::Message => write!(capped, "{}", Shown::guarded(&ErrorText(&**self))),
-            RenderStyle::Chain => write_chain(self, &mut capped, mode),
+            RenderStyle::Message => write!(
+                Controls { inner: &mut capped },
+                "{}",
+                Shown::guarded(&ErrorText(&**self))
+            ),
+            RenderStyle::Chain => write_chain(self, &mut Controls { inner: &mut capped }, mode),
             RenderStyle::Report => report(self, &mut capped, mode),
         };
         if capped.full {
@@ -729,8 +753,10 @@ impl Display for LinkText<'_, '_> {
     }
 }
 
-/// Writes one message, escaped when the report goes to a terminal and
-/// guarded when the mode says so.
+/// Writes one message, escaped when the report goes to a terminal (or its
+/// control characters escaped, `mode.controls`) and guarded when the mode
+/// says so. Every text of the report that does not come from the program
+/// itself goes through here or `one_line`.
 fn message(
     out: &mut dyn Write,
     mode: Mode,
@@ -740,8 +766,31 @@ fn message(
     let text = Shown::new(text, mode.guard);
     if mode.escape {
         write!(Escaped { inner: out, indent }, "{text}")
+    } else if mode.controls {
+        write!(Controls { inner: out }, "{text}")
     } else {
         write!(out, "{text}")
+    }
+}
+
+/// `message` for a string the error holds itself: no `Display` to guard, so
+/// it is written (or scanned and written) directly, without a formatter.
+fn message_str(out: &mut dyn Write, mode: Mode, indent: &'static str, text: &str) -> fmt::Result {
+    if mode.escape {
+        Escaped { inner: out, indent }.write_str(text)
+    } else if mode.controls {
+        Controls { inner: out }.write_str(text)
+    } else {
+        out.write_str(text)
+    }
+}
+
+/// The text of a context layer that holds a string.
+fn frame_text<'a>(layer: &'a (dyn core::error::Error + 'static)) -> Option<&'a str> {
+    match &layer.downcast_ref::<crate::raw::Frame>()?.value {
+        crate::frame::FrameValue::Static(text) => Some(text),
+        crate::frame::FrameValue::Text(text) => Some(text.as_str()),
+        crate::frame::FrameValue::Value(_) => None,
     }
 }
 
@@ -750,6 +799,8 @@ fn message(
 fn one_line(out: &mut dyn Write, mode: Mode, indent: &'static str, error: &Error) -> fmt::Result {
     if mode.escape {
         write_chain(error, &mut Escaped { inner: out, indent }, mode)
+    } else if mode.controls {
+        write_chain(error, &mut Controls { inner: out }, mode)
     } else {
         write_chain(error, out, mode)
     }
@@ -828,6 +879,77 @@ impl Write for Escaped<'_> {
             }
         }
         Ok(())
+    }
+}
+
+/// Escapes control characters other than newline and tab, and the
+/// bidirectional controls, as `\u{..}` text, and passes the rest through
+/// unchanged. `{:?}` and `render` write through it, so a message cannot move
+/// the cursor, rewrite a line with a carriage return, or retitle a terminal
+/// (T6, D-073). Newlines stay, so a multi-line message keeps its lines.
+struct Controls<'a> {
+    inner: &'a mut dyn Write,
+}
+
+/// Bytes `Controls` scans before it writes. A writer that fails (a full
+/// `Capped`) then stops the scan, so a long message past `max_render` costs
+/// one chunk more, not its whole length.
+const CHUNK: usize = 4096;
+
+impl Write for Controls<'_> {
+    #[inline]
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        if s.len() <= CHUNK {
+            return self.write_chunk(s);
+        }
+        let mut rest = s;
+        while !rest.is_empty() {
+            let mut end = rest.len().min(CHUNK);
+            while !rest.is_char_boundary(end) {
+                end -= 1;
+            }
+            let (chunk, tail) = rest.split_at_checked(end).unwrap_or((rest, ""));
+            self.write_chunk(chunk)?;
+            rest = tail;
+        }
+        Ok(())
+    }
+}
+
+/// Whether `bytes` holds a byte that can start a character `Controls`
+/// escapes: a C0 control other than newline and tab, DEL, or 0xC2 and 0xE2,
+/// the first bytes of the C1 and the bidirectional controls (and of other
+/// characters, which the slow path then lets through). No early exit, so the
+/// loop compiles to vector code (D-073).
+#[inline]
+fn may_need_escape(bytes: &[u8]) -> bool {
+    let mut found = false;
+    for &b in bytes {
+        found |= (b < 0x20) & (b != b'\n') & (b != b'\t') | (b == 0x7f) | (b == 0xc2) | (b == 0xe2);
+    }
+    found
+}
+
+impl Controls<'_> {
+    #[inline]
+    fn write_chunk(&mut self, s: &str) -> fmt::Result {
+        if !may_need_escape(s.as_bytes()) {
+            return self.inner.write_str(s);
+        }
+        self.write_escaped(s)
+    }
+
+    #[cold]
+    fn write_escaped(&mut self, s: &str) -> fmt::Result {
+        let mut start = 0;
+        for (i, c) in s.char_indices() {
+            if c != '\n' && c != '\t' && (c.is_control() || is_bidi_control(c)) {
+                self.inner.write_str(s.get(start..i).unwrap_or(""))?;
+                write!(self.inner, "\\u{{{:x}}}", u32::from(c))?;
+                start = i + c.len_utf8();
+            }
+        }
+        self.inner.write_str(s.get(start..).unwrap_or(""))
     }
 }
 

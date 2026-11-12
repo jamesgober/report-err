@@ -60,7 +60,7 @@ Every part that can grow has a budget (`Limits`, set once with `configure`): con
 
 ## Guarded output
 
-Every path that prints an error for someone else (`ExitReport`, `report`, `record`, `render`, `report_unhandled`) writes each `Display` through a guard: a `Display` that panics (with `std` and unwinding) prints `<display panicked>`, one that fails prints `<display failed>`, and the rest of the output goes on. Output stops at `max_render` bytes. The terminal paths (`ExitReport`, `report_unhandled`) also escape control characters and bidirectional controls, and indent a message's continuation lines, so no message can move the cursor or fake a block of the report. `{}`, `{:#}`, and `{:?}` are not guarded: they behave like any other `Display`.
+Every path that prints an error for someone else (`ExitReport`, `report`, `record`, `render`, `report_unhandled`) writes each `Display` through a guard: a `Display` that panics (with `std` and unwinding) prints `<display panicked>`, one that fails prints `<display failed>`, and the rest of the output goes on. Output stops at `max_render` bytes. The terminal paths (`ExitReport`, `report_unhandled`) also escape control characters and bidirectional controls, and indent a message's continuation lines, so no message can move the cursor or fake a block of the report. `{:?}` and `render` escape the same characters but keep continuation lines as written. `{}`, `{:#}`, and `{:?}` are not guarded: they behave like any other `Display`.
 
 ## Process-wide state
 

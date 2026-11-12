@@ -233,7 +233,11 @@ impl Error {
     /// entry; else the root's `ErrorInfo` when built with
     /// [`from_info`](Error::from_info); else the category's default public
     /// message. `None` without a code. It never comes from any `Display`:
-    /// `Display` is a private message for logs.
+    /// `Display` is a private message for logs. Nor from a variant's
+    /// `#[public]` text found through the chain: any error's `description()`
+    /// can claim to be a defined error, so that text is used only from a
+    /// catalog entry ([`configure_catalogs`](crate::configure_catalogs)) or a
+    /// `from_info` root. [`record`](Error::record) carries the same text.
     ///
     /// ```
     /// let error = report_err::err!("db password rejected for root");
@@ -252,18 +256,6 @@ impl Error {
             return Some(info.public_message());
         }
         Some(self.category().default_public_message())
-    }
-
-    /// The variant's own `#[public]` text, when only the identity probe
-    /// knows the code (no catalog entry, no `from_info` root). The probe
-    /// lends it, so `public_message` cannot return it; the owned record
-    /// carries it.
-    pub(crate) fn identity_public(&self) -> Option<alloc::string::String> {
-        let facts = self.facts();
-        if facts.entry.is_some() || facts.info.is_some() {
-            return None;
-        }
-        facts.identity?.public.map(alloc::string::String::from)
     }
 
     /// Wraps an error like [`Error::new`], and keeps it reachable as

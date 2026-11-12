@@ -123,6 +123,7 @@ fn test_reporting_and_the_hook_in_order() {
     }
 
     report_and_records(&error);
+    filtered_reports_build_nothing();
 }
 
 fn guards() {
@@ -207,4 +208,48 @@ fn report_and_records(error: &Error) {
     assert!(record.fields.len() <= limits.max_fields);
     assert!(record.trail.len() <= limits.max_trail);
     assert!(record.truncated);
+}
+
+/// D-074: when define-err's filter would drop the event, `report` does not
+/// build the record, so no `Display` runs. Runs after the main test's
+/// steps, in the same process, from that test.
+fn filtered_reports_build_nothing() {
+    static SHOWN: AtomicUsize = AtomicUsize::new(0);
+    records();
+    define_err::set_min_severity(Some(define_err::Severity::FATAL));
+    let shown = SHOWN.load(Ordering::SeqCst);
+    let error = Error::msg("root").context(LazyText(&SHOWN));
+    assert!(error.report());
+    assert_eq!(
+        SHOWN.load(Ordering::SeqCst),
+        shown,
+        "a filtered report ran Display"
+    );
+    assert!(records().is_empty());
+    define_err::set_min_severity(None);
+
+    // The hook adds SECURITY to every error in this binary, so the mask
+    // selects AUDIT.
+    define_err::set_kinds_mask(Kinds::AUDIT);
+    let error = err!("plain").context(LazyText(&SHOWN));
+    assert!(error.report());
+    assert_eq!(SHOWN.load(Ordering::SeqCst), shown);
+    assert!(records().is_empty());
+    let error = err!("audited")
+        .with_kinds(Kinds::AUDIT)
+        .context(LazyText(&SHOWN));
+    assert!(error.report());
+    assert_eq!(records().len(), 1);
+    assert!(SHOWN.load(Ordering::SeqCst) > shown);
+    define_err::set_kinds_mask(Kinds::ALL);
+}
+
+/// A context whose `Display` counts its calls, kept as a value.
+struct LazyText(&'static AtomicUsize);
+
+impl fmt::Display for LazyText {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        f.write_str("lazy")
+    }
 }

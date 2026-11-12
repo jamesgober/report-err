@@ -287,13 +287,16 @@ fn test_public_message_from_info_uses_the_variant_text() {
     assert_eq!(error.public_message(), Some("The database is busy."));
 }
 
+/// The probe's public text is never trusted (D-075): any `description()` can
+/// carry a probe, so a record takes the variant's text only from a catalog
+/// entry or a `from_info` root.
 #[test]
-fn test_record_carries_the_variant_public_text() {
+fn test_record_public_text_never_comes_from_the_probe() {
     let error = Error::new(DbError::Timeout).context("loading a user");
-    assert_eq!(
-        error.public_message(),
-        Some(Category::Unavailable.default_public_message())
-    );
+    let category = Category::Unavailable.default_public_message();
+    assert_eq!(error.public_message(), Some(category));
+    assert_eq!(error.record().public, category);
+    let error = Error::from_info(DbError::Timeout).context("loading a user");
     assert_eq!(error.record().public, "The database is busy.");
 }
 
