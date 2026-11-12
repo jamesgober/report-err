@@ -3,7 +3,8 @@
 
 use core::fmt;
 
-use define_err::{catalog, Code, CodeInfo};
+use define_err::catalog::Catalog;
+use define_err::{Code, CodeInfo};
 
 use crate::raw::WriteOnce;
 
@@ -176,20 +177,23 @@ pub(crate) fn max_render() -> usize {
     limits().max_render as usize
 }
 
-/// The catalogs set with [`configure_catalogs`].
-static CATALOGS: WriteOnce<&'static [&'static [CodeInfo]]> = WriteOnce::new();
+/// The catalogs set with [`configure_catalogs`], indexed by code.
+static CATALOGS: WriteOnce<Catalog> = WriteOnce::new();
 
 /// Sets the catalogs an explicit code is looked up in, once per process.
 ///
 /// A code set with `coded` or a code-first macro carries no metadata of its
 /// own; this lets it find its title, severity, category, kinds, and public
-/// message through define-err's `catalog::find`. A code found on a typed
-/// error in the chain has all of those but the public text without it.
-/// Optional; call it at the start of `main`. One allocation.
+/// message. A code found on a typed error in the chain has all of those but
+/// the public text without it. Optional; call it at the start of `main`.
+/// The entries are indexed once (two allocations and a sort), and each
+/// lookup is a binary search (D-079).
 ///
 /// # Errors
 ///
-/// [`ConfigureError::AlreadyConfigured`] on a second call.
+/// [`ConfigureError::AlreadyConfigured`] on a second call, and
+/// [`ConfigureError::DuplicateCode`] when two entries share a code; nothing
+/// is set then.
 ///
 /// ```
 /// define_err::define_errors! {
@@ -208,14 +212,22 @@ static CATALOGS: WriteOnce<&'static [&'static [CodeInfo]]> = WriteOnce::new();
 /// assert_eq!(error.category(), report_err::Category::Unavailable);
 /// ```
 pub fn configure_catalogs(catalogs: &'static [&'static [CodeInfo]]) -> Result<(), ConfigureError> {
+    if CATALOGS.get().is_some() {
+        return Err(ConfigureError::AlreadyConfigured);
+    }
+    let catalog = Catalog::new(catalogs).map_err(|d| ConfigureError::DuplicateCode {
+        code: d.code,
+        first: d.first,
+        second: d.second,
+    })?;
     CATALOGS
-        .set(catalogs)
+        .set(catalog)
         .map_err(|_| ConfigureError::AlreadyConfigured)
 }
 
 /// The catalog entry of `code`, when catalogs are configured and name it.
 pub(crate) fn find_code(code: Code) -> Option<&'static CodeInfo> {
-    CATALOGS.get().and_then(|c| catalog::find(c, code))
+    CATALOGS.get().and_then(|c| c.find(code))
 }
 
 /// Why a process-wide setting was refused.
@@ -242,6 +254,16 @@ pub enum ConfigureError {
         /// The largest value allowed.
         max: u64,
     },
+    /// Two catalog entries share a code; nothing was changed
+    /// (`configure_catalogs` only).
+    DuplicateCode {
+        /// The code defined twice.
+        code: Code,
+        /// The type name of the first entry (empty for a retired entry).
+        first: &'static str,
+        /// The type name of the second entry (empty for a retired entry).
+        second: &'static str,
+    },
 }
 
 impl fmt::Display for ConfigureError {
@@ -259,6 +281,19 @@ impl fmt::Display for ConfigureError {
                 f,
                 "{field} = {value} is outside {min}..={max}; choose a value in that range"
             ),
+            ConfigureError::DuplicateCode {
+                code,
+                first,
+                second,
+            } => {
+                let name = |n: &'static str| if n.is_empty() { "a retired entry" } else { n };
+                write!(
+                    f,
+                    "code {code} is defined twice: by {} and by {}; give one crate its own namespace",
+                    name(first),
+                    name(second)
+                )
+            }
         }
     }
 }

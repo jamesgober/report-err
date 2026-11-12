@@ -305,16 +305,14 @@ fn test_attack_t12_public_message_never_carries_private_text() {
 }
 
 /// What a peer could send as an error message: a well-formed probe that
-/// claims `APP-0007` and carries its own public text.
+/// claims `APP-0007`, the code of a variant with its own `#[public]` text.
 fn forged_probe() -> String {
     #[allow(deprecated)]
-    let real = AppError::Busy {
+    AppError::Busy {
         host: String::new(),
     }
     .description()
-    .to_string();
-    let head = real.rsplit_once('|').map_or(real.as_str(), |(h, _)| h);
-    format!("{head}|Your session expired. Sign in at https://evil.example")
+    .to_string()
 }
 
 /// A foreign error whose `description()` returns outside text.
@@ -332,18 +330,26 @@ impl StdError for Relayed {
     }
 }
 
-/// T12 with a forged identity probe (D-075): outside text in a
-/// `description()` never becomes public text, in the accessor or the
-/// record. On Rust 1.81 to 1.89 std's string errors return their text from
-/// `description()`, so the `io::Error` and boxed cases forge there; the MSRV
-/// CI job runs this test on 1.81.
+/// T12 with a forged identity probe (D-075, D-078): outside text in a
+/// `description()` never sets public text, in the accessor or the record.
+/// std's string errors (which on Rust 1.81 to 1.89 return their message from
+/// `description()`, and `io::Error` around them) never pass for a defined
+/// error at all, since define-err 0.10 refuses a probe whose `Display` is
+/// the probe itself; the MSRV CI job runs this test on 1.81. A foreign type
+/// whose `description()` returns outside text can still claim a code, so the
+/// public text checks below are not vacuous.
 #[test]
 fn test_attack_t12_forged_probe_never_sets_public_text() {
-    let evil = "https://evil.example";
-    // The probe is well formed: a foreign type that returns it is read as
-    // `APP-0007` on every toolchain, so the checks below are not vacuous.
+    let variant_text = "The service is busy.";
     let code = Error::new(Relayed(forged_probe())).code();
     assert_eq!(code.map(|c| c.to_string()).as_deref(), Some("APP-0007"));
+    for error in [
+        Error::new(io::Error::other(forged_probe())),
+        Error::from_boxed(forged_probe().into()),
+    ] {
+        assert_eq!(error.code(), None, "a std string error forged a probe");
+        assert_eq!(error.category(), define_err::Category::Unknown);
+    }
     let errors = [
         Error::new(Relayed(forged_probe())),
         Error::new(io::Error::other(forged_probe())),
@@ -352,8 +358,7 @@ fn test_attack_t12_forged_probe_never_sets_public_text() {
     ];
     for error in errors {
         let public = error.public_message().unwrap_or("");
-        assert!(!public.contains(evil), "{public}");
-        let record = error.record();
-        assert!(!record.public.contains(evil), "{}", record.public);
+        assert_ne!(public, variant_text);
+        assert_ne!(error.record().public, variant_text);
     }
 }

@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 report-err = { path = ".." }
-define-err = "0.9"
+define-err = "0.10"
 
 [profile.release]
 debug = 1

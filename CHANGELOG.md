@@ -13,6 +13,35 @@
 
 ---
 
+## [0.9.0] - 2026-11-12
+
+define-err 0.10. No name changed; `docs/MIGRATING.md` ("From report-err 0.8
+to 0.9") lists the three changes of behaviour.
+
+### Changed
+
+- define-err 0.10 (was 0.9). `Code`, `Severity`, `Category`, and `Kinds` are
+  re-exported, so an application that uses define-err directly needs 0.10
+  too; define-err 0.10 refuses a second copy of itself in one build.
+- `report()` with no reporter installed returns `false` and does not mark the
+  error reported, so an error reported before `set_reporter` can be reported
+  once one is installed. It returned `true` and marked it.
+- `configure_catalogs` indexes the catalogs once and looks a code up by
+  binary search, and refuses two entries with one code with
+  `ConfigureError::DuplicateCode` (new variant). The first entry used to
+  answer.
+- `report()` asks define-err's `would_deliver` before building the record.
+
+### Security
+
+- An error whose `description()` begins with define-err's identity probe and
+  whose `Display` is the same text (std's string errors and `io::Error`
+  around them, on Rust 1.81 to 1.89) is no longer read as a defined error, so
+  text from a peer cannot claim a code, category, severity, or kinds through
+  them (define-err 0.10). Tested on Rust 1.81 in CI.
+
+---
+
 ## [0.8.1] - 2026-11-12
 
 Fixes from an independent review of 0.8.0. Upgrading is recommended for
@@ -375,7 +404,8 @@ The scaffold and the plan. No functional code yet.
   cases, open decisions, and the decision log D-001 to D-008),
   `dev/DIRECTIVES.md`, and `dev/ROADMAP.md`.
 
-[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/jamesgober/report-err/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/jamesgober/report-err/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/jamesgober/report-err/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/jamesgober/report-err/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/jamesgober/report-err/compare/v0.6.0...v0.7.0

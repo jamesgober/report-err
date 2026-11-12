@@ -73,13 +73,14 @@
 //!
 //! ## Status
 //!
-//! `0.8.1` is feature complete, measured, hardened, and simplified: the anyhow surface,
+//! `0.9.0` is feature complete, measured, hardened, and simplified: the anyhow surface,
 //! codes, attachments, sections, the trail, exit codes, several causes,
 //! suppressed errors, budgets, the panic boundary, the creation hook, and
 //! reporting, benchmarked against anyhow, eyre, and error-stack on three
 //! platforms, with an attack test for every threat, fuzzing, and soak runs;
-//! `0.8.0` removed the methods that only repeated others, and `0.8.1` fixed
-//! the findings of an independent review.
+//! `0.8.0` removed the methods that only repeated others, `0.8.1` fixed
+//! the findings of an independent review, and `0.9.0` moved to define-err
+//! 0.10.
 //! The whole API is in `docs/API.md`, the numbers in `docs/PERFORMANCE.md`,
 //! and the threats in `docs/SECURITY.md`, in the
 //! [repository](https://github.com/jamesgober/report-err).

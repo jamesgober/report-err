@@ -30,6 +30,7 @@ Moving from anyhow, eyre, or snafu's `Whatever` to report-err. For anyhow it is 
 - [From eyre and color-eyre](#from-eyre-and-color-eyre)
 - [From snafu's `Whatever`](#from-snafus-whatever)
 - [From report-err 0.7 to 0.8](#from-report-err-07-to-08)
+- [From report-err 0.8 to 0.9](#from-report-err-08-to-09)
 
 ## From anyhow
 
@@ -62,7 +63,7 @@ s/\buse anyhow::/use report_err::/g
 s/\banyhow!(/err!(/g      (only in files that imported the macro by name)
 ```
 
-and in `Cargo.toml`, `anyhow = "..."` becomes `report-err = "0.8"`.
+and in `Cargo.toml`, `anyhow = "..."` becomes `report-err = "0.9"`.
 
 ### What behaves differently
 
@@ -122,3 +123,15 @@ s/\.with_kind(/.with_kinds(/g
 | `error.find_in_suppressed::<T>()` | `error.suppressed().iter().find_map(\|e\| e.find::<T>())` | The old method also searched the suppressed errors of suppressed errors. |
 | `define-err = "0.5"` beside report-err | `define-err = "0.9"` | report-err re-exports `Code`, `Severity`, `Category`, and `Kinds`; with two define-err versions in one build they are different types. Nothing else changed between define-err 0.5 and 0.9 for code that uses report-err. |
 
+## From report-err 0.8 to 0.9
+
+0.9 moves to define-err 0.10 and changes no name. In `Cargo.toml`, `report-err = "0.8"` becomes `"0.9"`, and a `define-err` dependency beside it becomes `"0.10"`: define-err 0.10 refuses a second copy of itself in one build, so the two must move together.
+
+| What | 0.8 | 0.9 |
+|---|---|---|
+| `define-err` beside report-err | `"0.9"` | `"0.10"`; see define-err's own migration note for its changes |
+| `error.report()` with no reporter installed | `true`, and the error was marked reported | `false`, and nothing is marked, so the error can be reported once a reporter is installed |
+| `configure_catalogs` with two entries that share a code | accepted; the first entry answered | `Err(ConfigureError::DuplicateCode { code, first, second })`, and nothing is set |
+| A foreign error whose `description()` begins with define-err's probe (std string errors on Rust 1.81 to 1.89) | could pass for a defined error | is not read as one (define-err 0.10) |
+
+A `match` on `ConfigureError` already has a wildcard arm, since the enum is `#[non_exhaustive]`.

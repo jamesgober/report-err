@@ -18,6 +18,8 @@ define_errors! {
 
 static CATALOGS: &[&[CodeInfo]] = &[DbError::CATALOG];
 static OTHER: &[&[CodeInfo]] = &[];
+/// The same catalog twice: every code is defined twice.
+static TWICE: &[&[CodeInfo]] = &[DbError::CATALOG, DbError::CATALOG];
 
 #[test]
 fn test_catalogs_are_set_once_and_answer_for_explicit_codes() {
@@ -35,6 +37,20 @@ Code: DB-0001 (unknown, severity 17)
 "
         ),
         "{macro_coded:?}"
+    );
+
+    // D-079: a code defined twice is refused, and nothing is set.
+    match configure_catalogs(TWICE) {
+        Err(ConfigureError::DuplicateCode { code, .. }) => assert_eq!(code, DbError::TIMEOUT),
+        other => panic!("expected DuplicateCode, got {other:?}"),
+    }
+    assert!(configure_catalogs(TWICE)
+        .unwrap_err()
+        .to_string()
+        .starts_with("code DB-0001 is defined twice"));
+    assert_eq!(
+        err!("no reply").coded(DbError::TIMEOUT).category(),
+        Category::Unknown
     );
 
     assert_eq!(configure_catalogs(CATALOGS), Ok(()));

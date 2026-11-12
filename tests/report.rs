@@ -71,11 +71,12 @@ fn records() -> Vec<ErrorRecord> {
 
 #[test]
 fn test_reporting_and_the_hook_in_order() {
-    // E-98: no reporter installed: `true` once, nothing printed.
-    let error = err!("unreported");
-    assert!(error.report());
-    assert!(!error.report());
-    assert!(error.is_reported());
+    // E-98: no reporter installed: `false`, nothing printed, and the error
+    // is not marked reported, since nothing received it (D-080).
+    let early = err!("before the reporter");
+    assert!(!early.report());
+    assert!(!early.report());
+    assert!(!early.is_reported());
 
     // Errors made while the hook is installed by another thread (E-99).
     let stop = Arc::new(AtomicBool::new(false));
@@ -123,6 +124,16 @@ fn test_reporting_and_the_hook_in_order() {
     }
 
     report_and_records(&error);
+
+    // D-080: an error reported before `set_reporter` reaches the reporter
+    // once one is installed.
+    records();
+    assert!(early.report());
+    assert!(early.is_reported());
+    let delivered = records();
+    assert_eq!(delivered.len(), 1);
+    assert_eq!(delivered[0].chain[0].message, "before the reporter");
+
     filtered_reports_build_nothing();
 }
 

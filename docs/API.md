@@ -18,7 +18,7 @@
 </div>
 <br>
 
-A task-by-task tour of the 0.8 API, covering every public item. The rustdoc on
+A task-by-task tour of the 0.9 API, covering every public item. The rustdoc on
 [docs.rs](https://docs.rs/report-err) has the same items with more examples;
 every example here is compiled and run as a doc test with all features enabled.
 
@@ -78,7 +78,7 @@ every example here is compiled and run as a doc test with all features enabled.
 
 ```toml
 [dependencies]
-report-err = "0.8"
+report-err = "0.9"
 ```
 
 ### Features and `no_std`
@@ -92,7 +92,7 @@ With `default-features = false` the crate is `no_std` with `alloc`, on any
 target with pointer-sized atomics:
 
 ```toml
-report-err = { version = "0.8", default-features = false }
+report-err = { version = "0.9", default-features = false }
 ```
 
 ### The prelude
@@ -367,7 +367,9 @@ These come from define-err; report-err re-exports [`Code`], [`Severity`],
 coded error in the chain (a define-err type with `#[code]`); else the root's
 `ErrorInfo` code. `coded(code)` sets it, on an `Error` or through `Context`,
 and wins over a code found in the chain. The report prints it on a `Code:`
-line.
+line. A context layer never carries a code, so a define-err value given to
+`.context(..)` (on an `Option` too) is kept and downcastable but answers no
+`code()`; to keep its code, make it the error: `opt.ok_or(DbError::NotFound)?`.
 
 ```rust
 use report_err::{Context, Result};
@@ -459,7 +461,9 @@ assert!(report_err::err!("x").info().is_none());
 A code set with `coded` or a code-first macro is only a number. Give
 `configure_catalogs` your define-err catalogs, once, at the start of `main`,
 and such a code finds its title, severity, category, kinds, and public message
-in them. A second call returns `ConfigureError::AlreadyConfigured`.
+in them. The entries are indexed once, so each lookup is a binary search. A
+second call returns `ConfigureError::AlreadyConfigured`, and two entries with
+the same code `ConfigureError::DuplicateCode`; nothing is set then.
 
 ```rust
 define_err::define_errors! {
@@ -896,19 +900,36 @@ assert!(!report_err::err!("x").is_panic());
 
 ### `report` and `is_reported`
 
-`report()` hands the error to define-err's reporting facade, once: the first
-call, from any thread, returns `true`; later calls return `false` and do
-nothing, so outer layers never report it twice. When a reporter is installed
-(define-err's `set_reporter`) it receives the error's [`record`](#record).
-With none, the cost is the flag and one load. `is_reported()` says whether
-`report` has run.
+`report()` hands the error to define-err's reporting facade, once. With a
+reporter installed (define-err's `set_reporter`), the first call, from any
+thread, returns `true` and the reporter receives the error's
+[`record`](#record); later calls return `false` and do nothing, so outer
+layers never report it twice. When define-err's minimum severity or kinds mask
+would drop the event, the record is not built, and the call still counts.
+With no reporter installed, `report()` returns `false` and marks nothing, so
+an error reported before `set_reporter` can be reported once one is; the cost
+is one load. `is_reported()` says whether a reporter has been handed it.
 
 ```rust
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+struct Count(AtomicUsize);
+impl define_err::Reporter for Count {
+    fn receive(&self, _: &define_err::Event<'_>) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+static COUNT: Count = Count(AtomicUsize::new(0));
+
 let error = report_err::err!("request failed");
+assert!(!error.report()); // no reporter yet: nothing received it
 assert!(!error.is_reported());
+
+define_err::set_reporter(&COUNT).unwrap();
 assert!(error.report());
 assert!(!error.report());
 assert!(error.is_reported());
+assert_eq!(COUNT.0.load(Ordering::SeqCst), 1);
 ```
 
 ### `record`
@@ -961,7 +982,10 @@ location, the explicit code, and the root's type name, and may add fields
 (printed under `Fields:` and kept in the record) and kinds. report-err guards
 it: a hook that creates an `Error` itself is not called again for that one,
 and a hook that panics leaves the field `creation_hook = "panicked"` (both
-with `std`). With no hook installed the cost is one load.
+with `std`). Without `std` there is no such guard: a hook that creates an
+`Error` recurses until the stack overflows, so it must not (define-err's
+`CreationHook` contract). The hook runs for every error, those dropped a
+moment later included. With no hook installed the cost is one load.
 
 ```rust
 use define_err::{Annotate, CreationHook, CreationInfo};
@@ -1099,7 +1123,7 @@ error type of its own:
 
 | Item | Fails with |
 |---|---|
-| `configure`, `configure_catalogs` | [`ConfigureError`]: `AlreadyConfigured` on a second call; `OutOfRange { field, value, min, max }` for a budget outside its range (`configure` only) |
+| `configure`, `configure_catalogs` | [`ConfigureError`]: `AlreadyConfigured` on a second call; `OutOfRange { field, value, min, max }` for a budget outside its range (`configure` only); `DuplicateCode { code, first, second }` for two entries with one code (`configure_catalogs` only) |
 | `render` | `fmt::Error`, only when the writer fails |
 | `downcast` | the error itself, unchanged, when the root is not a `T` |
 | `push_child` | `false` when the child's tree does not fit; the child is counted under `Omitted:` |

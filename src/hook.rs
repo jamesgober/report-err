@@ -73,43 +73,38 @@ impl Error {
 
     /// Hands the error to define-err's reporting facade, once.
     ///
-    /// The first call, from any thread, sets a flag and returns `true`; later
-    /// calls return `false` and do nothing, so outer layers never report
-    /// twice. When a reporter is installed it receives the error's
+    /// With a reporter installed, the first call, from any thread, sets a
+    /// flag and returns `true`, and the reporter receives the error's
     /// [`record`](Error::record), with every message already written through
-    /// the guarded renderer. With none, the cost is the flag and one load.
-    /// When define-err's minimum severity or kinds mask would drop the event,
-    /// the record is not built.
+    /// the guarded renderer; later calls return `false` and do nothing, so
+    /// outer layers never report twice. When define-err's minimum severity or
+    /// kinds mask would drop the event, the record is not built
+    /// (`define_err::would_deliver`), and the call still counts.
+    ///
+    /// With no reporter installed it returns `false` and leaves the flag
+    /// unset, so nothing is marked reported that nobody received: an error
+    /// reported before `set_reporter` (at start-up, say) can be reported
+    /// again once one is installed. The cost is one load (D-080).
     ///
     /// ```
     /// let error = report_err::err!("request failed");
-    /// assert!(error.report());
+    /// // No reporter is installed here: nothing received it.
     /// assert!(!error.report());
-    /// assert!(error.is_reported());
+    /// assert!(!error.is_reported());
     /// ```
     #[track_caller]
     pub fn report(&self) -> bool {
+        if !define_err::is_installed() {
+            return false;
+        }
         if self.raw.set_flags(REPORTED) & REPORTED != 0 {
             return false;
         }
-        if define_err::is_installed() && self.passes_filter() {
+        if define_err::would_deliver(self.severity(), self.kinds()) {
             let record = self.record_with(true, Some(Location::caller()));
             define_err::report_record(&record);
         }
         true
-    }
-
-    /// Whether define-err's filter lets an event with this error's severity
-    /// and kinds through: the same test `report_record` makes, done before
-    /// the record is built (D-074).
-    fn passes_filter(&self) -> bool {
-        if let Some(min) = define_err::min_severity() {
-            if self.severity().get() < min.get() {
-                return false;
-            }
-        }
-        let mask = define_err::kinds_mask();
-        mask == Kinds::ALL || self.kinds().intersects(mask)
     }
 
     /// Whether [`report`](Error::report) has run.
