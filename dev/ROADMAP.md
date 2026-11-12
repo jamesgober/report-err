@@ -74,7 +74,7 @@ Exit: every finding of `dev/SIMPLICITY-AUDIT.md` fixed or kept with its reason; 
 - [x] define-err 0.9 (D-069).
 - [x] `docs/MIGRATING.md`: "From report-err 0.7 to 0.8".
 
-## v0.8.1 - Review fixes
+## v0.8.1 - Review fixes (DONE, 2026-11-12)
 Exit: every high and medium finding of the independent review of 0.8.0 fixed, each with a regression test; the rest fixed or planned below with a reason.
 - [x] F-1: `DerefMut` on a boxed root wrote through a read-only pointer; fixed, I-15, Miri test (D-072).
 - [x] F-2: a second define-err in a build: CI check, SECURITY.md supports 0.8.x only, README note (D-076). Yanking 0.7.0 and earlier on crates.io waits for James (public action).
