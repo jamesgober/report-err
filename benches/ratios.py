@@ -104,6 +104,22 @@ STD_ONLY = (
 )
 
 
+# Rows a change makes slower on purpose, each with the decision that accepts
+# it and the most it may cost in nanoseconds per round; a row slower than its
+# allowance still fails. Each entry is for one pull request: once the base
+# branch has the change, the row is no longer slower, and the entry is
+# removed in the next pull request.
+ACCEPTED = {
+    # define-err 0.10's identify checks a probed error's Display, so outside
+    # text cannot forge an identity: about 16 ns per probe (D-082).
+    "codes/code found after 3": (20.0, "D-082"),
+    "codes/severity found after 3": (20.0, "D-082"),
+    # No report-err code on this path changed; a pinned A/B on Linux shows it
+    # level, so the CI runner's +10% is the binary's layout (D-083).
+    "collect/B16 collect_all, none failing": (5000.0, "D-083"),
+}
+
+
 def ours(title):
     """report-err's own rows: its side of a comparison, or a group only it
     has. The RD-14 model and the std-only reference rows are not report-err's
@@ -189,12 +205,16 @@ def main():
         out.append("")
         out.append(f"Base and head measured in turn {rounds} times on this runner: {len(results)} of report-err's times.")
         some = []
+        accepted = []
         for title in sorted(results):
             pairs = results[title]
             shown = ", ".join(f"{c * 100:+.1f}%" for c, _ in pairs)
             line = f"- {title}: {shown} ({pairs[-1][1]:+.2f} ns in the last round)"
             hits = sum(slower(c, d) for c, d in pairs)
-            if hits == rounds:
+            allowance = ACCEPTED.get(title)
+            if hits == rounds and allowance and all(d <= allowance[0] for _, d in pairs):
+                accepted.append(f"{line}; within {allowance[0]:.0f} ns ({allowance[1]})")
+            elif hits == rounds:
                 failed.append(line)
             elif hits:
                 some.append(line)
@@ -202,6 +222,10 @@ def main():
             out.append("")
             out.append("Slower by more than 5% in some rounds but not all (noise, not a regression):")
             out.extend(some)
+        if accepted:
+            out.append("")
+            out.append("Slower in every round, accepted by a recorded decision within its allowance:")
+            out.extend(accepted)
     if failed:
         out.append("")
         every = f" in all {alternate[1]} rounds" if alternate else ""

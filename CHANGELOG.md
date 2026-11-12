@@ -38,7 +38,9 @@ to 0.9") lists the three changes of behaviour.
   whose `Display` is the same text (std's string errors and `io::Error`
   around them, on Rust 1.81 to 1.89) is no longer read as a defined error, so
   text from a peer cannot claim a code, category, severity, or kinds through
-  them (define-err 0.10). Tested on Rust 1.81 in CI.
+  them (define-err 0.10). Tested on Rust 1.81 in CI. The check costs about
+  10 to 15 ns each time a code, severity, category, or kinds is read from an
+  error found in the chain; a code set with `coded` is unchanged.
 
 ---
 

@@ -93,6 +93,7 @@ Exit: report-err on define-err 0.10, the review findings that release unblocks f
 
 ## v0.10.0 - Alpha
 Exit: both migrations green; every surprise fixed or recorded in `docs/MIGRATING.md`.
+- [ ] Remove the three `ACCEPTED` entries from `benches/ratios.py` in the first pull request after 0.9.0 (D-082, D-083); the base then has the change.
 - [ ] kraken migrated for real on a branch James reviews; `kraken-lsp`'s unused anyhow dependency removed. Rehearsed on 2026-11-08 against the 0.7 code: the find-and-replace pass alone, 2,803 tests passed and the same 4 native-linking tests failed as with anyhow.
 - [ ] One more application migrated (a Hive DB tool or WASP boot code) using codes, `ExitReport`, and `report()`: hive-system's `hive-admin`, rehearsed on 2026-11-08 (an `HADM` catalog, `run`, a reporter that logs; exit codes 64, 65, 70, 73 as designed).
 - [ ] The report prints a code's help (`Help:` under `Code:`) when its catalog entry is known; `docs/MIGRATING.md` says to call `configure_catalogs` for it. Found by the `hive-admin` rehearsal.
