@@ -16,26 +16,38 @@ use crate::trace::StepKind;
 pub(crate) struct Mode {
     /// Control characters escaped and continuation lines indented (T6).
     pub(crate) escape: bool,
+    /// Control characters escaped, continuation lines as written (D-073).
+    /// Implied by `escape`.
+    pub(crate) controls: bool,
     /// Each `Display` guarded: a panic prints `<display panicked>` and a
     /// failure `<display failed>`, and the rendering goes on.
     pub(crate) guard: bool,
 }
 
 impl Mode {
-    /// `{:?}`: as written, not guarded.
+    /// `{:#}`: as written, not guarded.
     pub(crate) const PLAIN: Mode = Mode {
         escape: false,
+        controls: false,
         guard: false,
     };
-    /// `render`, `record`, `report`: guarded.
+    /// `{:?}`: not guarded; control characters in messages escaped.
+    pub(crate) const DEBUG: Mode = Mode {
+        escape: false,
+        controls: true,
+        guard: false,
+    };
+    /// `render`: guarded; control characters in messages escaped.
     pub(crate) const GUARDED: Mode = Mode {
         escape: false,
+        controls: true,
         guard: true,
     };
     /// `ExitReport` and `report_unhandled`: guarded and escaped for a terminal.
     #[cfg_attr(not(feature = "std"), allow(dead_code))]
     pub(crate) const TERMINAL: Mode = Mode {
         escape: true,
+        controls: true,
         guard: true,
     };
 }
@@ -380,7 +392,7 @@ impl Debug for Error {
 /// `{:?}`: the report (anyhow's layout first, then report-err's blocks), with
 /// control characters other than newline and tab escaped (D-073).
 fn write_report(error: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    report(error, &mut Controls { inner: f }, Mode::PLAIN)
+    report(error, f, Mode::DEBUG)
 }
 
 /// Cause `n` is skipped as a repeat (`n` below the 4,096 links `max_chain`
@@ -678,13 +690,17 @@ impl Error {
             full: false,
         };
         let mode = Mode::GUARDED;
-        let result = {
-            let mut out = Controls { inner: &mut capped };
-            match style {
-                RenderStyle::Message => write!(out, "{}", Shown::guarded(&ErrorText(&**self))),
-                RenderStyle::Chain => write_chain(self, &mut out, mode),
-                RenderStyle::Report => report(self, &mut out, mode),
-            }
+        // The report escapes each message where it writes it (`message`);
+        // the one-line styles are all message text, so the whole output
+        // goes through `Controls`.
+        let result = match style {
+            RenderStyle::Message => write!(
+                Controls { inner: &mut capped },
+                "{}",
+                Shown::guarded(&ErrorText(&**self))
+            ),
+            RenderStyle::Chain => write_chain(self, &mut Controls { inner: &mut capped }, mode),
+            RenderStyle::Report => report(self, &mut capped, mode),
         };
         if capped.full {
             return capped.inner.write_str("\n(report truncated)");
@@ -735,8 +751,10 @@ impl Display for LinkText<'_, '_> {
     }
 }
 
-/// Writes one message, escaped when the report goes to a terminal and
-/// guarded when the mode says so.
+/// Writes one message, escaped when the report goes to a terminal (or its
+/// control characters escaped, `mode.controls`) and guarded when the mode
+/// says so. Every text of the report that does not come from the program
+/// itself goes through here or `one_line`.
 fn message(
     out: &mut dyn Write,
     mode: Mode,
@@ -746,6 +764,8 @@ fn message(
     let text = Shown::new(text, mode.guard);
     if mode.escape {
         write!(Escaped { inner: out, indent }, "{text}")
+    } else if mode.controls {
+        write!(Controls { inner: out }, "{text}")
     } else {
         write!(out, "{text}")
     }
@@ -756,6 +776,8 @@ fn message(
 fn one_line(out: &mut dyn Write, mode: Mode, indent: &'static str, error: &Error) -> fmt::Result {
     if mode.escape {
         write_chain(error, &mut Escaped { inner: out, indent }, mode)
+    } else if mode.controls {
+        write_chain(error, &mut Controls { inner: out }, mode)
     } else {
         write_chain(error, out, mode)
     }

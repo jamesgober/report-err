@@ -211,7 +211,8 @@ pub fn run(input: &mut Input<'_>, limits: &Limits) {
 
 /// The invariants of 12.3 that hold after any operation.
 pub fn check(error: &Error, root: Root, limits: &Limits) {
-    // `{}` is the outermost link; `{:?}` begins with it.
+    // `{}` is the outermost link; `{:?}` begins with it, with control
+    // characters other than newline and tab written as `\u{..}` (D-073).
     let outer = error
         .chain()
         .next()
@@ -219,7 +220,11 @@ pub fn check(error: &Error, root: Root, limits: &Limits) {
         .unwrap_or_default();
     let display = format!("{error}");
     assert_eq!(display, outer);
-    assert!(format!("{error:?}").starts_with(&display));
+    let debug = format!("{error:?}");
+    assert!(debug.starts_with(&escape_controls(&display)));
+    assert!(!debug
+        .chars()
+        .any(|c| c != '\n' && c != '\t' && (c.is_control() || is_bidi(c))));
     let _ = write!(Sink(0), "{error:#}");
     let _ = write!(Sink(0), "{error:#?}");
 
@@ -256,4 +261,23 @@ pub fn check(error: &Error, root: Root, limits: &Limits) {
         Root::Message => assert!(error.downcast_ref::<Leaf>().is_none()),
         Root::Unknown => {}
     }
+}
+
+/// The bidirectional embedding, override, and isolate controls.
+fn is_bidi(c: char) -> bool {
+    matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+}
+
+/// `text` as `{:?}` writes it: control characters other than newline and
+/// tab, and the bidirectional controls, as `\u{..}`.
+fn escape_controls(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if c != '\n' && c != '\t' && (c.is_control() || is_bidi(c)) {
+            let _ = write!(out, "\\u{{{:x}}}", u32::from(c));
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
