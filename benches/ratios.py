@@ -117,6 +117,10 @@ ACCEPTED = {
     # No report-err code on this path changed; a pinned A/B on Linux shows it
     # level, so the CI runner's +10% is the binary's layout (D-083).
     "collect/B16 collect_all, none failing": (5000.0, "D-083"),
+    # Windows only, about 0.15 ns a link, through code that did not change:
+    # the alignment of the head binary (D-084).
+    "inspect/source walk/report-err/5": (3.0, "D-084"),
+    "inspect/source walk/report-err/9": (3.0, "D-084"),
 }
 
 
