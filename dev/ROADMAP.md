@@ -77,7 +77,7 @@ Exit: every finding of `dev/SIMPLICITY-AUDIT.md` fixed or kept with its reason; 
 ## v0.8.1 - Review fixes (DONE, 2026-11-12)
 Exit: every high and medium finding of the independent review of 0.8.0 fixed, each with a regression test; the rest fixed or planned below with a reason.
 - [x] F-1: `DerefMut` on a boxed root wrote through a read-only pointer; fixed, I-15, Miri test (D-072).
-- [x] F-2: a second define-err in a build: CI check, SECURITY.md supports 0.8.x only, README note (D-076). Yanking 0.7.0 and earlier on crates.io waits for James (public action).
+- [x] F-2: a second define-err in a build: CI check, SECURITY.md supports 0.8.x only, README note (D-076). 0.2.0 to 0.7.0 yanked on crates.io on 2026-11-12, James's go (D-085).
 - [x] F-3: `{:?}` and `render` escape control characters (D-073).
 - [x] F-4 and F-7: public text never from a probe; the accessor and the record agree (D-075).
 - [x] F-5, first part: `report()` checks the filter before building the record (D-074).
@@ -93,7 +93,7 @@ Exit: report-err on define-err 0.10, the review findings that release unblocks f
 
 ## v0.10.0 - Alpha
 Exit: both migrations green; every surprise fixed or recorded in `docs/MIGRATING.md`.
-- [ ] Remove the `ACCEPTED` entries from `benches/ratios.py` in the first pull request after 0.9.0 (D-082 to D-084); the base then has the change.
+- [x] Remove the `ACCEPTED` entries from `benches/ratios.py` in the first pull request after 0.9.0 (D-082 to D-084); the base then has the change.
 - [ ] kraken migrated for real on a branch James reviews; `kraken-lsp`'s unused anyhow dependency removed. Rehearsed on 2026-11-08 against the 0.7 code: the find-and-replace pass alone, 2,803 tests passed and the same 4 native-linking tests failed as with anyhow.
 - [ ] One more application migrated (a Hive DB tool or WASP boot code) using codes, `ExitReport`, and `report()`: hive-system's `hive-admin`, rehearsed on 2026-11-08 (an `HADM` catalog, `run`, a reporter that logs; exit codes 64, 65, 70, 73 as designed).
 - [ ] The report prints a code's help (`Help:` under `Code:`) when its catalog entry is known; `docs/MIGRATING.md` says to call `configure_catalogs` for it. Found by the `hive-admin` rehearsal.

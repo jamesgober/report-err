@@ -13,7 +13,9 @@ Email me@jamesgober.com with the version, a description, and a way to reproduce 
 |---|---|
 | 0.9.x | yes |
 | 0.8.x | 0.8.1 only, for applications on define-err 0.9 |
-| below 0.8.1 | no: upgrade. 0.8.0 has the `DerefMut` soundness bug fixed in 0.8.1. 0.7.0 and earlier depend on define-err 0.5 or older, so beside an application on define-err 0.9 their reports and creation hook reach a define-err copy the application never set up, and are lost |
+| 0.8.0 | no: upgrade. It has the `DerefMut` soundness bug fixed in 0.8.1 |
+| 0.2.0 to 0.7.0 | no, and yanked on crates.io (2026-11-12): they depend on define-err 0.5 or older, so beside an application on a newer define-err their reports and creation hook reach a define-err copy the application never set up, and are lost |
+| 0.1.0 | no: the scaffold, with no API |
 
 ## Keeping secrets out of reports
 
