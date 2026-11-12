@@ -874,7 +874,11 @@ struct Controls<'a> {
 const CHUNK: usize = 4096;
 
 impl Write for Controls<'_> {
+    #[inline]
     fn write_str(&mut self, s: &str) -> fmt::Result {
+        if s.len() <= CHUNK {
+            return self.write_chunk(s);
+        }
         let mut rest = s;
         while !rest.is_empty() {
             let mut end = rest.len().min(CHUNK);
@@ -889,16 +893,31 @@ impl Write for Controls<'_> {
     }
 }
 
+/// Whether `bytes` holds a byte that can start a character `Controls`
+/// escapes: a C0 control other than newline and tab, DEL, or 0xC2 and 0xE2,
+/// the first bytes of the C1 and the bidirectional controls (and of other
+/// characters, which the slow path then lets through). No early exit, so the
+/// loop compiles to vector code (D-073).
+#[inline]
+fn may_need_escape(bytes: &[u8]) -> bool {
+    let mut found = false;
+    for &b in bytes {
+        found |= (b < 0x20) & (b != b'\n') & (b != b'\t') | (b == 0x7f) | (b == 0xc2) | (b == 0xe2);
+    }
+    found
+}
+
 impl Controls<'_> {
+    #[inline]
     fn write_chunk(&mut self, s: &str) -> fmt::Result {
-        // Fast path: no byte that can start a control character. C1 controls
-        // start with 0xC2 and the bidirectional controls with 0xE2; both bytes
-        // also start other characters, which then take the slow path.
-        let suspect =
-            |b: u8| (b < 0x20 && b != b'\n' && b != b'\t') || matches!(b, 0x7f | 0xc2 | 0xe2);
-        if !s.bytes().any(suspect) {
+        if !may_need_escape(s.as_bytes()) {
             return self.inner.write_str(s);
         }
+        self.write_escaped(s)
+    }
+
+    #[cold]
+    fn write_escaped(&mut self, s: &str) -> fmt::Result {
         let mut start = 0;
         for (i, c) in s.char_indices() {
             if c != '\n' && c != '\t' && (c.is_control() || is_bidi_control(c)) {
