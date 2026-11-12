@@ -85,6 +85,7 @@ Exit: every high and medium finding of the independent review of 0.8.0 fixed, ea
 
 ## v0.9.0 - Alpha
 Exit: both migrations green; every surprise fixed or recorded in `docs/MIGRATING.md`.
+- [ ] define-err 0.10 (published 2026-11-12; a breaking change for report-err's users, as D-069 was): its probe rejects forged identities and carries no public text (review F-7, second part), `links` makes a second copy a resolve error (review F-2), `would_deliver` replaces report-err's own filter check (D-074), and `catalog::Catalog` indexes the catalogs for `configure_catalogs` (review F-5, second part). `docs/MIGRATING.md` gets "From report-err 0.8 to 0.9".
 - [ ] kraken migrated for real on a branch James reviews; `kraken-lsp`'s unused anyhow dependency removed. Rehearsed on 2026-11-08 against the 0.7 code: the find-and-replace pass alone, 2,803 tests passed and the same 4 native-linking tests failed as with anyhow.
 - [ ] One more application migrated (a Hive DB tool or WASP boot code) using codes, `ExitReport`, and `report()`: hive-system's `hive-admin`, rehearsed on 2026-11-08 (an `HADM` catalog, `run`, a reporter that logs; exit codes 64, 65, 70, 73 as designed).
 - [ ] The report prints a code's help (`Help:` under `Code:`) when its catalog entry is known; `docs/MIGRATING.md` says to call `configure_catalogs` for it. Found by the `hive-admin` rehearsal.
@@ -93,7 +94,6 @@ Exit: both migrations green; every surprise fixed or recorded in `docs/MIGRATING
 - [ ] Decide whether `category` reads an `io::Error` source below a coded wrapper, not only an `io::Error` root.
 - [ ] Review F-5, second part: compute the facts once per record (today five chain walks and five catalog scans more than needed), and index the catalogs in `configure_catalogs` by `Code::identity()` with binary search (up to 27 us for a late code in 10,000 entries today). Deferred from 0.8.1 because it changes the lookup path every accessor shares and needs its own benchmark run.
 - [ ] Review F-6: an installed creation hook turns 1 allocation into 5. Keep hook fields out of the context extension block, in one `String` with offsets; say in the docs that the hook runs on every error. Deferred from 0.8.1: it changes `Extras`'s layout, which needs the allocation and size tables re-measured.
-- [ ] Review F-7, second part: take define-err's fix that rejects forged probes (blocked on define-err: needs the release with its review F-1 fix), so forged codes, severity, category, and kinds stop too; public text is already safe (D-075).
 - [ ] Review F-8: `report()` with no reporter sets the flag and drops the error silently; leave the flag unset when nothing is installed, and decide on a standard-error fallback.
 - [ ] Review F-9: a typed define-err error given to `Option::context` loses its code; forward `description()` from the message wrappers, or document `ok_or`.
 - [ ] Review F-10: without `std`, a hook that makes an error recurses; a process-wide reentrancy flag, or say so in the docs.
