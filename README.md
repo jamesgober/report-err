@@ -29,7 +29,7 @@
         <strong>MSRV is 1.81+</strong> (Rust 2021 edition). <code>no_std</code> + <code>alloc</code>; <code>std</code> on by default.
     </p>
     <blockquote>
-        <strong>Status: <code>0.8.0</code>, feature complete, measured, hardened, and simplified.</strong> The anyhow surface; error codes, severity, categories, and kinds from define-err; notes, attachments, a propagation trail, and backtraces; <code>ExitReport</code>; several causes and <code>collect_all()</code>; suppressed errors and cleanup; budgets on everything that grows; the panic boundary; the creation hook; and reporting through define-err's facade. <code>0.6</code> measured it against anyhow, eyre, error-stack, and <code>Box&lt;dyn Error&gt;</code> on three platforms (<a href="./docs/PERFORMANCE.md"><code>docs/PERFORMANCE.md</code></a>); <code>0.7</code> hardened it with attack tests for every threat, a day of fuzzing per target, and 8-hour soaks (<a href="./docs/SECURITY.md"><code>docs/SECURITY.md</code></a>); <code>0.8</code> removed the methods that only repeated others and gave two items plainer names (<a href="./docs/MIGRATING.md#from-report-err-07-to-08">the migration note</a>); next comes the alpha, with kraken migrated (<code>0.9</code>). The whole API is in <a href="./docs/API.md"><code>docs/API.md</code></a>.
+        <strong>Status: <code>0.8.1</code>, feature complete, measured, hardened, and simplified.</strong> The anyhow surface; error codes, severity, categories, and kinds from define-err; notes, attachments, a propagation trail, and backtraces; <code>ExitReport</code>; several causes and <code>collect_all()</code>; suppressed errors and cleanup; budgets on everything that grows; the panic boundary; the creation hook; and reporting through define-err's facade. <code>0.6</code> measured it against anyhow, eyre, error-stack, and <code>Box&lt;dyn Error&gt;</code> on three platforms (<a href="./docs/PERFORMANCE.md"><code>docs/PERFORMANCE.md</code></a>); <code>0.7</code> hardened it with attack tests for every threat, a day of fuzzing per target, and 8-hour soaks (<a href="./docs/SECURITY.md"><code>docs/SECURITY.md</code></a>); <code>0.8</code> removed the methods that only repeated others and gave two items plainer names (<a href="./docs/MIGRATING.md#from-report-err-07-to-08">the migration note</a>); <code>0.8.1</code> fixed the findings of an independent review, one of them a soundness bug in <code>DerefMut</code> on a boxed root; next comes the alpha, with kraken migrated (<code>0.9</code>). The whole API is in <a href="./docs/API.md"><code>docs/API.md</code></a>.
     </blockquote>
 </div>
 
@@ -40,7 +40,7 @@
 
 ```toml
 [dependencies]
-report-err = "0.8.0"
+report-err = "0.8.1"
 ```
 
 ## Quick start
@@ -98,6 +98,8 @@ let as_std: &(dyn std::error::Error + 'static) = &*error;   // every layer is in
 
 Each of these costs nothing until it is used. Codes come from [define-err](https://crates.io/crates/define-err); an error with a code found anywhere in its chain has it without any extra call.
 
+report-err re-exports define-err's `Code`, `Severity`, `Category`, and `Kinds` and reports through define-err's reporter, so an application and report-err must use the same define-err version: with two in one build, reports and the creation hook go to a copy the application never set up. Use the define-err version report-err's manifest names (`0.9` for report-err `0.8`; `cargo tree -d` shows a second one). report-err follows every define-err break with a new release of its own, and cannot reach 1.0 before define-err does.
+
 ```rust
 use report_err::{bail, Context, ExitReport, Result};
 
@@ -119,9 +121,11 @@ fn main() -> ExitReport {
 ```text
 Error: user 7 is inactive
 
-Code: USER-0003 (failed-precondition, severity 17)
+Code: USER-0003 (unknown, severity 17)
 Location: src/users.rs:6:9
 ```
+
+A code given to `bail!` or `err!` names no type, so its category, severity, and public message come from a catalog: with `report_err::configure_catalogs(&[UserError::CATALOG])` at the start of `main`, the line reads `USER-0003 (failed_precondition, severity 13)`, as it does without a catalog for an error whose own type has the code (`Error::new(UserError::Inactive)`).
 
 | Ask | Answer |
 |---|---|
@@ -132,13 +136,13 @@ Location: src/users.rs:6:9
 | `error.attachment::<T>()` | a typed value added with `.attach(value)` |
 | `error.trail()` | where the error was made, each `.trace()`, and each context, in order |
 
-`ExitReport` escapes terminal controls and Unicode bidirectional controls in every message, so a message cannot move the cursor or fake a block of the report, and it cuts the report at 1 MiB.
+The report from `{:?}` (what `main -> Result` prints) and from `render` writes terminal controls and Unicode bidirectional controls as `\u{..}` text, so a message cannot move the cursor, clear the screen, or rewrite a line. `ExitReport` does the same and also indents a message's continuation lines, so a message with a newline cannot fake a line of the report, and it cuts the report at 1 MiB: use it for text an attacker may control.
 
 ## Moving from anyhow
 
 | anyhow | report-err |
 |---|---|
-| `anyhow = "1"` | `report-err = "0.8.0"` |
+| `anyhow = "1"` | `report-err = "0.8.1"` |
 | `use anyhow::{Context, Result};` | `use report_err::{Context, Result};` |
 | `anyhow::Error`, `bail!`, `ensure!`, `format_err!`, `.context`, `.chain()`, `.downcast_ref` | same names |
 | `anyhow!(...)` | `err!(...)` |

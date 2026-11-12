@@ -230,10 +230,14 @@ unsafe fn payload_of_boxed(node: NonNull<Header>) -> NonNull<DynError> {
     // SAFETY: I-3: a projection to the payload field of a live node.
     let payload: *mut BoxedError =
         unsafe { addr_of_mut!((*node.cast::<Node<BoxedError>>().as_ptr()).payload) };
-    // SAFETY: the payload is initialised; this reads only the box field, and the
-    // object it points to is a separate allocation owned by the box.
-    let inner: &DynError = unsafe { &*(*payload).0 };
-    NonNull::from(inner)
+    // SAFETY: I-3, I-13: a projection to the box field; no reference is made.
+    let boxed: *mut Box<DynError> = unsafe { addr_of_mut!((*payload).0) };
+    // SAFETY: I-13: the box is initialised; this reads its pointer and projects to
+    // the object it owns without making a reference, so the result keeps write
+    // permission for `root_mut` (a pointer made from `&` would be read-only).
+    let inner: *mut DynError = unsafe { addr_of_mut!(**boxed) };
+    // SAFETY: a box never holds a null pointer.
+    unsafe { NonNull::new_unchecked(inner) }
 }
 
 /// # Safety
@@ -1146,5 +1150,32 @@ mod tests {
         assert!(raw.payload_ref::<Box<DynError>>().is_some());
         let b = raw.take::<Box<DynError>>().ok();
         assert!(b.is_some_and(|b| b.downcast_ref::<Root>().is_some()));
+    }
+
+    /// I-13 for a boxed root with no context layer: `outermost_mut` reaches the
+    /// boxed error through `root_mut`, and the write must be allowed (D-072).
+    #[test]
+    fn test_raw_deref_mut_boxed_root() {
+        #[derive(Debug)]
+        struct Counter(u32);
+        impl Display for Counter {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{}", self.0)
+            }
+        }
+        impl StdError for Counter {}
+
+        let inner: Box<DynError> = Box::new(Counter(1));
+        let mut raw = RawError::from_boxed(inner, here());
+        if let Some(c) = raw.outermost_mut().downcast_mut::<Counter>() {
+            c.0 = 2;
+        }
+        assert_eq!(raw.root().to_string(), "2");
+        if let Some(c) = raw.outermost_mut().downcast_mut::<Counter>() {
+            c.0 += 1;
+        }
+        assert_eq!(raw.outermost().to_string(), "3");
+        let b = raw.take::<Box<DynError>>().ok();
+        assert!(b.is_some_and(|b| b.to_string() == "3"));
     }
 }

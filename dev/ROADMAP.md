@@ -67,12 +67,21 @@ Exit: no open finding; every threat has a passing attack test.
 - [x] Soak: 8 hours on Windows and Linux, flat memory. The first run passed on Linux and failed on Windows at +1.75% resident memory in the plain half, the system heap settling over the first hour rather than a leak (D-061). Rerun from 2026-11-06 17:13 UTC on both, with live heap bytes counted exactly: passed on both (Windows 19.4 billion rounds, Linux 3.0 billion; live heap back within 7.7 KB of its start).
 - [x] The 64 KiB stack test: build, render, search, record, and drop a full tree (`test_attack_t11_full_tree_on_a_64_kib_stack`; 10.3's 0.7 idea).
 
-## v0.8.0 - Simpler API
+## v0.8.0 - Simpler API (DONE, 2026-11-11)
 Exit: every finding of `dev/SIMPLICITY-AUDIT.md` fixed or kept with its reason; `docs/API.md` covers every public item with compiled examples; the migration note written.
 - [x] Simplicity audit of the 0.7 API (James, 2026-11-11): two renames, six removals, the anyhow names kept (D-067).
 - [x] `docs/API.md` rewritten as a task-by-task reference, compiled as doc tests (D-068).
 - [x] define-err 0.9 (D-069).
 - [x] `docs/MIGRATING.md`: "From report-err 0.7 to 0.8".
+
+## v0.8.1 - Review fixes
+Exit: every high and medium finding of the independent review of 0.8.0 fixed, each with a regression test; the rest fixed or planned below with a reason.
+- [x] F-1: `DerefMut` on a boxed root wrote through a read-only pointer; fixed, I-15, Miri test (D-072).
+- [x] F-2: a second define-err in a build: CI check, SECURITY.md supports 0.8.x only, README note (D-076). Yanking 0.7.0 and earlier on crates.io waits for James (public action).
+- [x] F-3: `{:?}` and `render` escape control characters (D-073).
+- [x] F-4 and F-7: public text never from a probe; the accessor and the record agree (D-075).
+- [x] F-5, first part: `report()` checks the filter before building the record (D-074).
+- [x] F-11: README `Code:` line, SECURITY.md versions table and T8 claim (D-077).
 
 ## v0.9.0 - Alpha
 Exit: both migrations green; every surprise fixed or recorded in `docs/MIGRATING.md`.
@@ -82,6 +91,12 @@ Exit: both migrations green; every surprise fixed or recorded in `docs/MIGRATING
 - [ ] The `Code:` line names the severity (`warning`), not its number.
 - [ ] Ask define-err for a way to exit 74 (I/O) at normal severity: only `DataLoss` maps to 74 today. Found by the `hive-admin` rehearsal.
 - [ ] Decide whether `category` reads an `io::Error` source below a coded wrapper, not only an `io::Error` root.
+- [ ] Review F-5, second part: compute the facts once per record (today five chain walks and five catalog scans more than needed), and index the catalogs in `configure_catalogs` by `Code::identity()` with binary search (up to 27 us for a late code in 10,000 entries today). Deferred from 0.8.1 because it changes the lookup path every accessor shares and needs its own benchmark run.
+- [ ] Review F-6: an installed creation hook turns 1 allocation into 5. Keep hook fields out of the context extension block, in one `String` with offsets; say in the docs that the hook runs on every error. Deferred from 0.8.1: it changes `Extras`'s layout, which needs the allocation and size tables re-measured.
+- [ ] Review F-7, second part: take define-err's fix that rejects forged probes (blocked on define-err: needs the release with its review F-1 fix), so forged codes, severity, category, and kinds stop too; public text is already safe (D-075).
+- [ ] Review F-8: `report()` with no reporter sets the flag and drops the error silently; leave the flag unset when nothing is installed, and decide on a standard-error fallback.
+- [ ] Review F-9: a typed define-err error given to `Option::context` loses its code; forward `description()` from the message wrappers, or document `ok_or`.
+- [ ] Review F-10: without `std`, a hook that makes an error recurses; a process-wide reentrancy flag, or say so in the docs.
 
 ## v0.10.0 - Beta and release candidates
 Exit: two weeks without an API change; every document checked against the build; James's review done; the pre-1.0 polish below complete.

@@ -377,9 +377,10 @@ impl Debug for Error {
     }
 }
 
-/// `{:?}`: the report (anyhow's layout first, then report-err's blocks).
+/// `{:?}`: the report (anyhow's layout first, then report-err's blocks), with
+/// control characters other than newline and tab escaped (D-073).
 fn write_report(error: &Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    report(error, f, Mode::PLAIN)
+    report(error, &mut Controls { inner: f }, Mode::PLAIN)
 }
 
 /// Cause `n` is skipped as a repeat (`n` below the 4,096 links `max_chain`
@@ -646,7 +647,9 @@ impl Error {
     /// Each `Display` is guarded: one that panics (with `std` and unwinding)
     /// prints `<display panicked>`, one that fails prints
     /// `<display failed>`, and the rest goes on. Output stops at
-    /// `max_render` bytes with `(report truncated)`.
+    /// `max_render` bytes with `(report truncated)`. Control characters
+    /// other than newline and tab, and the bidirectional controls, are
+    /// written as `\u{..}` text, as in `{:?}`.
     ///
     /// # Errors
     ///
@@ -675,10 +678,13 @@ impl Error {
             full: false,
         };
         let mode = Mode::GUARDED;
-        let result = match style {
-            RenderStyle::Message => write!(capped, "{}", Shown::guarded(&ErrorText(&**self))),
-            RenderStyle::Chain => write_chain(self, &mut capped, mode),
-            RenderStyle::Report => report(self, &mut capped, mode),
+        let result = {
+            let mut out = Controls { inner: &mut capped };
+            match style {
+                RenderStyle::Message => write!(out, "{}", Shown::guarded(&ErrorText(&**self))),
+                RenderStyle::Chain => write_chain(self, &mut out, mode),
+                RenderStyle::Report => report(self, &mut out, mode),
+            }
         };
         if capped.full {
             return capped.inner.write_str("\n(report truncated)");
@@ -828,6 +834,37 @@ impl Write for Escaped<'_> {
             }
         }
         Ok(())
+    }
+}
+
+/// Escapes control characters other than newline and tab, and the
+/// bidirectional controls, as `\u{..}` text, and passes the rest through
+/// unchanged. `{:?}` and `render` write through it, so a message cannot move
+/// the cursor, rewrite a line with a carriage return, or retitle a terminal
+/// (T6, D-073). Newlines stay, so a multi-line message keeps its lines.
+struct Controls<'a> {
+    inner: &'a mut dyn Write,
+}
+
+impl Write for Controls<'_> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        // Fast path: no byte that can start a control character. C1 controls
+        // start with 0xC2 and the bidirectional controls with 0xE2; both bytes
+        // also start other characters, which then take the slow path.
+        let suspect =
+            |b: u8| (b < 0x20 && b != b'\n' && b != b'\t') || matches!(b, 0x7f | 0xc2 | 0xe2);
+        if !s.bytes().any(suspect) {
+            return self.inner.write_str(s);
+        }
+        let mut start = 0;
+        for (i, c) in s.char_indices() {
+            if c != '\n' && c != '\t' && (c.is_control() || is_bidi_control(c)) {
+                self.inner.write_str(s.get(start..i).unwrap_or(""))?;
+                write!(self.inner, "\\u{{{:x}}}", u32::from(c))?;
+                start = i + c.len_utf8();
+            }
+        }
+        self.inner.write_str(s.get(start..).unwrap_or(""))
     }
 }
 

@@ -279,8 +279,8 @@ fn test_attack_t12_public_message_never_carries_private_text() {
         host: "db-7.internal".to_string(),
     })
     .context("loading the account of user 42");
-    // With no catalog entry, the category's text; the record carries the
-    // variant's own `#[public]` text.
+    // With no catalog entry and no `from_info` root, the category's text, in
+    // the accessor and in the record alike (D-075).
     let public = error.public_message().unwrap();
     assert_eq!(
         public,
@@ -297,9 +297,63 @@ fn test_attack_t12_public_message_never_carries_private_text() {
         assert!(!public.contains(private), "{private}");
     }
     let record = error.record();
-    assert_eq!(record.public, "The service is busy.");
+    assert_eq!(record.public, public);
     assert!(!record.public.contains("db-7.internal"));
     assert!(!record.public.contains(file!()));
     // An uncoded error has no public message at all, never its `Display`.
     assert_eq!(err!("secret detail").public_message(), None);
+}
+
+/// What a peer could send as an error message: a well-formed probe that
+/// claims `APP-0007` and carries its own public text.
+fn forged_probe() -> String {
+    #[allow(deprecated)]
+    let real = AppError::Busy {
+        host: String::new(),
+    }
+    .description()
+    .to_string();
+    let head = real.rsplit_once('|').map_or(real.as_str(), |(h, _)| h);
+    format!("{head}|Your session expired. Sign in at https://evil.example")
+}
+
+/// A foreign error whose `description()` returns outside text.
+#[derive(Debug)]
+struct Relayed(String);
+impl fmt::Display for Relayed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("upstream failed")
+    }
+}
+impl StdError for Relayed {
+    #[allow(deprecated)]
+    fn description(&self) -> &str {
+        &self.0
+    }
+}
+
+/// T12 with a forged identity probe (D-075): outside text in a
+/// `description()` never becomes public text, in the accessor or the
+/// record. On Rust 1.81 to 1.89 std's string errors return their text from
+/// `description()`, so the `io::Error` and boxed cases forge there; the MSRV
+/// CI job runs this test on 1.81.
+#[test]
+fn test_attack_t12_forged_probe_never_sets_public_text() {
+    let evil = "https://evil.example";
+    // The probe is well formed: a foreign type that returns it is read as
+    // `APP-0007` on every toolchain, so the checks below are not vacuous.
+    let code = Error::new(Relayed(forged_probe())).code();
+    assert_eq!(code.map(|c| c.to_string()).as_deref(), Some("APP-0007"));
+    let errors = [
+        Error::new(Relayed(forged_probe())),
+        Error::new(io::Error::other(forged_probe())),
+        Error::from_boxed(forged_probe().into()),
+        Error::new(Relayed(forged_probe())).context("calling the peer"),
+    ];
+    for error in errors {
+        let public = error.public_message().unwrap_or("");
+        assert!(!public.contains(evil), "{public}");
+        let record = error.record();
+        assert!(!record.public.contains(evil), "{}", record.public);
+    }
 }

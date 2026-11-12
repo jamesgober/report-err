@@ -108,6 +108,44 @@ fn test_construction_empty_display_and_control_characters() {
     assert_eq!(error.to_string(), text, "Display stays raw for programs");
 }
 
+/// `{:?}` (what `main -> Result` prints) and `render` escape control
+/// characters other than newline and tab, and the bidirectional controls
+/// (T6, D-073); `{}` and `{:#}` stay raw.
+#[test]
+fn test_debug_and_render_escape_controls() {
+    use report_err::RenderStyle;
+
+    let name = "a\u{1b}]0;title\u{7}\u{1b}[2J\rError: fake\u{9b}\u{202e}z";
+    let error = Error::msg("root").context(format!("opening {name}\nline two\tend"));
+    let debug = format!("{error:?}");
+    for bad in ['\u{1b}', '\r', '\u{7}', '\u{9b}', '\u{202e}'] {
+        assert!(!debug.contains(bad), "{bad:?} in {debug:?}");
+    }
+    assert!(debug.starts_with(
+        "opening a\\u{1b}]0;title\\u{7}\\u{1b}[2J\\u{d}Error: fake\\u{9b}\\u{202e}z\nline two\tend"
+    ));
+    for style in [
+        RenderStyle::Message,
+        RenderStyle::Chain,
+        RenderStyle::Report,
+    ] {
+        let mut out = String::new();
+        error.render(&mut out, style).unwrap();
+        assert!(!out.contains('\u{1b}') && !out.contains('\r'), "{out:?}");
+        assert!(out.contains("\\u{1b}[2J"), "{out:?}");
+    }
+    assert!(format!("{error:#}").contains('\u{1b}'));
+    // Text without controls is unchanged, including other characters that
+    // share a first byte with a control (U+00A0 with C1, U+2014 with the
+    // bidirectional controls).
+    let plain = Error::msg("caf\u{e9}\u{a0}\u{2014} ok");
+    let debug = format!("{plain:?}");
+    assert!(
+        debug.starts_with("caf\u{e9}\u{a0}\u{2014} ok\n\nLocation: "),
+        "{debug:?}"
+    );
+}
+
 #[test]
 fn test_construction_escaped_braces_literal() {
     assert_eq!(err!("{{}}").to_string(), "{}");
@@ -336,6 +374,37 @@ fn test_deref_mut_then_read_again() {
         );
     }
     assert_eq!(chain(&error), ["b", "a", "leaf"]);
+}
+
+/// `DerefMut` on a boxed root with no context layer reaches the boxed error and
+/// may write to it (I-15, D-072); `err!` on a box takes the same path.
+#[test]
+fn test_deref_mut_boxed_root_can_write() {
+    #[derive(Debug)]
+    struct Counter(u32);
+    impl fmt::Display for Counter {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", self.0)
+        }
+    }
+    impl StdError for Counter {}
+
+    let boxed: Box<dyn StdError + Send + Sync> = Box::new(Counter(1));
+    let mut error = Error::from_boxed(boxed);
+    if let Some(c) = (*error).downcast_mut::<Counter>() {
+        c.0 = 2;
+    }
+    assert_eq!(error.to_string(), "2");
+
+    let boxed: Box<dyn StdError + Send + Sync> = Box::new(Counter(5));
+    let mut error = err!(boxed);
+    if let Some(c) = (*error).downcast_mut::<Counter>() {
+        c.0 = 6;
+    }
+    assert_eq!(error.to_string(), "6");
+    let mut error = error.context("outer");
+    assert!((*error).downcast_mut::<Counter>().is_none());
+    assert_eq!(error.root_cause().to_string(), "6");
 }
 
 #[test]

@@ -25,6 +25,17 @@ fn test_catalogs_are_set_once_and_answer_for_explicit_codes() {
     let before = err!("no reply").coded(DbError::TIMEOUT);
     assert_eq!(before.category(), Category::Unknown);
     assert_eq!(before.severity(), Severity::ERROR);
+    // The README's `Code:` line: a code given to a macro names no type, so
+    // without a catalog the category is unknown (D-077).
+    let macro_coded = err!(DbError::TIMEOUT, "user {} timed out", 7);
+    assert!(
+        format!("{macro_coded:?}").contains(
+            "
+Code: DB-0001 (unknown, severity 17)
+"
+        ),
+        "{macro_coded:?}"
+    );
 
     assert_eq!(configure_catalogs(CATALOGS), Ok(()));
     assert_eq!(
@@ -40,6 +51,8 @@ fn test_catalogs_are_set_once_and_answer_for_explicit_codes() {
     assert_eq!(error.public_message(), Some("The database is busy."));
     assert_eq!(error.exit_code(), 69);
     assert!(format!("{error:?}").contains("Code: DB-0001 (unavailable, "));
+    let macro_coded = err!(DbError::TIMEOUT, "user {} timed out", 7);
+    assert!(format!("{macro_coded:?}").contains("Code: DB-0001 (unavailable, severity "));
 
     // E-56: the title on `None`, and the code itself when no catalog names it.
     let none = None::<u8>.coded(DbError::TIMEOUT).unwrap_err();

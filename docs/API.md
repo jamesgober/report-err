@@ -427,7 +427,10 @@ assert_eq!(missing.category(), Category::NotFound);
 `public_message()` is text a client may see, for an error with a code: the
 code's catalog entry; else the root's `ErrorInfo`; else the category's default
 public message. It is `None` without a code, and never comes from a
-`Display`, which is a private message for logs.
+`Display`, which is a private message for logs. A variant's `#[public]` text
+is used only from a catalog entry or a `from_info` root, never from the
+identity probe of an error in the chain, because any error's `description()`
+can claim to be a defined error. `record().public` carries the same text.
 
 `Error::from_info(error)` wraps a define-err error like `Error::new` and keeps
 it reachable as `&dyn ErrorInfo` through `info()`, so per-value metadata the
@@ -576,7 +579,10 @@ for what a budget dropped; `Backtrace:` when one was captured.
 
 In `{:#}` and `Caused by:`, a layer whose text the layer above already ends
 with is skipped, so an error whose `Display` repeats its source is not printed
-twice. Width, fill, and precision are ignored. `{}`, `{:#}`, and `{:?}` are not
+twice. Width, fill, and precision are ignored. `{:?}` writes control
+characters other than newline and tab, and the Unicode bidirectional controls,
+as `\u{..}` text, so a message cannot move the cursor or rewrite a line; `{}`
+and `{:#}` write the text as it is. `{}`, `{:#}`, and `{:?}` are not
 guarded: a `Display` that misbehaves misbehaves here as anywhere else. Use
 [`render`](#render-and-renderstyle), `ExitReport`, `report`, or `record` where
 it must not.
@@ -603,7 +609,8 @@ assert!(report.contains("\nLocation: "));
 account, for a panic hook or a crash path. A `Display` that panics prints
 `<display panicked>` (with `std` and unwinding), one that fails prints
 `<display failed>`, and the output stops at `max_render` bytes with
-`(report truncated)`. It returns `Err` only when `out` itself fails.
+`(report truncated)`. Control characters are escaped as in `{:?}`, in all
+three styles. It returns `Err` only when `out` itself fails.
 
 ```rust
 use std::fmt;
@@ -793,7 +800,10 @@ assert!(format!("{error:?}").contains("Backtrace:"));
 ### `fn main() -> Result<()>`
 
 The standard library prints `Error: ` and the report (`{:?}`) to standard error
-and exits with 1, as with anyhow.
+and exits with 1, as with anyhow. Control characters are escaped, but a
+message's continuation lines are not indented, so a message with a newline
+can print a line that looks like another; where an attacker may control the
+text, return `ExitReport` instead.
 
 ```rust,no_run
 fn main() -> report_err::Result<()> {
