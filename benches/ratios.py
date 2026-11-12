@@ -119,8 +119,9 @@ ACCEPTED = {
     "collect/B16 collect_all, none failing": (5000.0, "D-083"),
     # Windows only, about 0.15 ns a link, through code that did not change:
     # the alignment of the head binary (D-084).
-    "inspect/source walk/report-err/5": (3.0, "D-084"),
-    "inspect/source walk/report-err/9": (3.0, "D-084"),
+    "inspect/source walk/report-err/3": (4.0, "D-084"),
+    "inspect/source walk/report-err/5": (4.0, "D-084"),
+    "inspect/source walk/report-err/9": (4.0, "D-084"),
 }
 
 
