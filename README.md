@@ -29,7 +29,7 @@
         <strong>MSRV is 1.81+</strong> (Rust 2021 edition). <code>no_std</code> + <code>alloc</code>; <code>std</code> on by default.
     </p>
     <blockquote>
-        <strong>Status: <code>0.8.1</code>, feature complete, measured, hardened, and simplified.</strong> The anyhow surface; error codes, severity, categories, and kinds from define-err; notes, attachments, a propagation trail, and backtraces; <code>ExitReport</code>; several causes and <code>collect_all()</code>; suppressed errors and cleanup; budgets on everything that grows; the panic boundary; the creation hook; and reporting through define-err's facade. <code>0.6</code> measured it against anyhow, eyre, error-stack, and <code>Box&lt;dyn Error&gt;</code> on three platforms (<a href="./docs/PERFORMANCE.md"><code>docs/PERFORMANCE.md</code></a>); <code>0.7</code> hardened it with attack tests for every threat, a day of fuzzing per target, and 8-hour soaks (<a href="./docs/SECURITY.md"><code>docs/SECURITY.md</code></a>); <code>0.8</code> removed the methods that only repeated others and gave two items plainer names (<a href="./docs/MIGRATING.md#from-report-err-07-to-08">the migration note</a>); <code>0.8.1</code> fixed the findings of an independent review, one of them a soundness bug in <code>DerefMut</code> on a boxed root; next comes the alpha, with kraken migrated (<code>0.9</code>). The whole API is in <a href="./docs/API.md"><code>docs/API.md</code></a>.
+        <strong>Status: <code>0.9.0</code>, feature complete, measured, hardened, and simplified.</strong> The anyhow surface; error codes, severity, categories, and kinds from define-err; notes, attachments, a propagation trail, and backtraces; <code>ExitReport</code>; several causes and <code>collect_all()</code>; suppressed errors and cleanup; budgets on everything that grows; the panic boundary; the creation hook; and reporting through define-err's facade. <code>0.6</code> measured it against anyhow, eyre, error-stack, and <code>Box&lt;dyn Error&gt;</code> on three platforms (<a href="./docs/PERFORMANCE.md"><code>docs/PERFORMANCE.md</code></a>); <code>0.7</code> hardened it with attack tests for every threat, a day of fuzzing per target, and 8-hour soaks (<a href="./docs/SECURITY.md"><code>docs/SECURITY.md</code></a>); <code>0.8</code> removed the methods that only repeated others and gave two items plainer names (<a href="./docs/MIGRATING.md#from-report-err-07-to-08">the migration note</a>); <code>0.8.1</code> fixed the findings of an independent review, one of them a soundness bug in <code>DerefMut</code> on a boxed root; <code>0.9</code> moved to define-err 0.10, whose identity probe outside text can no longer forge (<a href="./docs/MIGRATING.md#from-report-err-08-to-09">the migration note</a>); next comes the alpha, with kraken migrated (<code>0.10</code>). The whole API is in <a href="./docs/API.md"><code>docs/API.md</code></a>.
     </blockquote>
 </div>
 
@@ -40,7 +40,7 @@
 
 ```toml
 [dependencies]
-report-err = "0.8.1"
+report-err = "0.9.0"
 ```
 
 ## Quick start
@@ -98,7 +98,7 @@ let as_std: &(dyn std::error::Error + 'static) = &*error;   // every layer is in
 
 Each of these costs nothing until it is used. Codes come from [define-err](https://crates.io/crates/define-err); an error with a code found anywhere in its chain has it without any extra call.
 
-report-err re-exports define-err's `Code`, `Severity`, `Category`, and `Kinds` and reports through define-err's reporter, so an application and report-err must use the same define-err version: with two in one build, reports and the creation hook go to a copy the application never set up. Use the define-err version report-err's manifest names (`0.9` for report-err `0.8`; `cargo tree -d` shows a second one). report-err follows every define-err break with a new release of its own, and cannot reach 1.0 before define-err does.
+report-err re-exports define-err's `Code`, `Severity`, `Category`, and `Kinds` and reports through define-err's reporter, so an application and report-err must use the same define-err version: with two in one build, reports and the creation hook go to a copy the application never set up. Use the define-err version report-err's manifest names (`0.10` for report-err `0.9`; `cargo tree -d` shows a second one, and from define-err 0.10 on Cargo refuses a second copy). report-err follows every define-err break with a new release of its own, and cannot reach 1.0 before define-err does.
 
 ```rust
 use report_err::{bail, Context, ExitReport, Result};
@@ -142,7 +142,7 @@ The report from `{:?}` (what `main -> Result` prints) and from `render` writes t
 
 | anyhow | report-err |
 |---|---|
-| `anyhow = "1"` | `report-err = "0.8.1"` |
+| `anyhow = "1"` | `report-err = "0.9.0"` |
 | `use anyhow::{Context, Result};` | `use report_err::{Context, Result};` |
 | `anyhow::Error`, `bail!`, `ensure!`, `format_err!`, `.context`, `.chain()`, `.downcast_ref` | same names |
 | `anyhow!(...)` | `err!(...)` |
@@ -188,8 +188,8 @@ let page = boundary(|| plugin.render(&page)).context("plugin `gallery` failed")?
 
 | What | Version |
 |---|---|
-| The alpha: kraken and one more application migrated | `0.9.0` |
-| Beta and release candidates | `0.10.0` |
+| The alpha: kraken and one more application migrated | `0.10.0` |
+| Beta and release candidates | `0.11.0` |
 
 ## Documentation
 

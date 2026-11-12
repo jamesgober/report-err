@@ -307,14 +307,13 @@ fn test_alloc_first_trace_is_two_blocks_then_none_to_the_budget() {
 
 #[test]
 fn test_alloc_report_without_a_reporter_is_free() {
-    // PLAN 7.16: the flag and one load.
+    // PLAN 7.16: one load; nothing received it, so it is not marked
+    // reported (D-080).
     let error = err!("x");
     let (first, count) = allocs(|| error.report());
-    assert!(first);
+    assert!(!first);
     assert_eq!(count, 0);
-    let (again, count) = allocs(|| error.report());
-    assert!(!again);
-    assert_eq!(count, 0);
+    assert!(!error.is_reported());
 }
 
 #[test]

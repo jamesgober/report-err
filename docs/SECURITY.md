@@ -11,8 +11,9 @@ Email me@jamesgober.com with the version, a description, and a way to reproduce 
 
 | Version | Supported |
 |---|---|
-| 0.8.x | yes: 0.8.1 or later |
-| below 0.8 | no: upgrade. 0.7.0 and earlier depend on define-err 0.5 or older, so beside an application on define-err 0.9 their reports and creation hook reach a define-err copy the application never set up, and are lost |
+| 0.9.x | yes |
+| 0.8.x | 0.8.1 only, for applications on define-err 0.9 |
+| below 0.8.1 | no: upgrade. 0.8.0 has the `DerefMut` soundness bug fixed in 0.8.1. 0.7.0 and earlier depend on define-err 0.5 or older, so beside an application on define-err 0.9 their reports and creation hook reach a define-err copy the application never set up, and are lost |
 
 ## Keeping secrets out of reports
 

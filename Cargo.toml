@@ -3,7 +3,7 @@
 # =============================================================================
 [package]
 name    = "report-err"
-version = "0.8.1"
+version = "0.9.0"
 
 # Minimum Supported Rust Version (MSRV)
 # 1.81: `core::error::Error` is stable in `core` from 1.81, which the `no_std`
@@ -68,7 +68,7 @@ testing = []
 # define-err: codes, severity, categories, kinds, the identity probe, the
 # error record, and the reporting facade (dev/PLAN.md section 3.4). By
 # published version, never `path`; `alloc` always, `std` with ours (D-019).
-define-err = { version = "0.9", default-features = false, features = ["alloc"] }
+define-err = { version = "0.10", default-features = false, features = ["alloc"] }
 
 
 # DEV DEPENDENCIES
