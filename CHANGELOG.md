@@ -46,8 +46,8 @@ to 0.9") lists the three changes of behaviour.
 
 ## [0.8.1] - 2026-11-12
 
-Fixes from an independent review of 0.8.0. Upgrading is recommended for
-everyone: the first item is a soundness bug reachable from safe code.
+Bug fixes. Upgrading is recommended for everyone: the first item is a
+soundness bug reachable from safe code.
 
 ### Fixed
 

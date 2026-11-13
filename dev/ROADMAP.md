@@ -28,12 +28,12 @@ Requires: define-err's own 0.2 design lock (its API approved), so the names repo
 
 ## v0.3.0 - Core: anyhow parity (DONE, 2026-10-29)
 API: ROOT-02, ROOT-03, ERR-01 to ERR-10, ERR-17, CTX-01, CTX-02, MAC-01 to MAC-03, CHN-01, CHN-02, MAIN-01, STD-01 to STD-03; `Deref`, `DerefMut`, and `AsRef` to `dyn Error` (D-003).
-Exit: a kraken branch migrated by the `PLAN.md` 8.14.1 pass compiles and passes its tests (trial; the merge happens at 0.8); edge cases E-1 to E-49d and E-57 to E-65 that apply to the 0.3 surface pass.
+Exit: a branch of the first application (a compiler) migrated by the `PLAN.md` 8.14.1 pass compiles and passes its tests (trial; the merge happens at 0.8); edge cases E-1 to E-49d and E-57 to E-65 that apply to the 0.3 surface pass.
 - [x] `src/raw.rs` with every invariant test (I-1 to I-13); Miri clean under both aliasing models with strict provenance; ASan job active.
 - [x] Flat frames with the header slot and the chain view, the per-link mechanism chosen by benchmark (D-011); formatting rules for message, causes, location; de-duplication rule.
 - [x] Counting-allocator tests for every 7.5 row that exists at 0.3; the anyhow parity suite for the 0.3 surface, including hand-written `source()` walks; the `no_std` build and tests.
 - [x] `docs/MIGRATING.md`, `docs/UNSAFE.md` updated.
-- [x] kraken trial migration (2026-10-29): 2 manifest lines and 36 source lines changed by the find-and-replace pass, no hand edits; 1,974 tests passed with report-err as with anyhow, and the same 3 tests failed with both (they link a native program; "Linking failed" on the machine used). Details in `docs/MIGRATING.md`.
+- [x] Trial migration of a compiler (2026-10-29): 2 manifest lines and 36 source lines changed by the find-and-replace pass, no hand edits; 1,974 tests passed with report-err as with anyhow, and the same 3 tests failed with both (they link a native program; "Linking failed" on the machine used). Details in `docs/MIGRATING.md`.
 - [x] Benchmarks against anyhow (PLAN 11.4). One measured exception recorded for 0.6: `{:#}` (D-022).
 
 ## v0.4.0 - Extended: codes, sections, attachments, trace, exit codes (DONE, 2026-11-02)
@@ -74,34 +74,34 @@ Exit: every finding of `dev/SIMPLICITY-AUDIT.md` fixed or kept with its reason; 
 - [x] define-err 0.9 (D-069).
 - [x] `docs/MIGRATING.md`: "From report-err 0.7 to 0.8".
 
-## v0.8.1 - Review fixes (DONE, 2026-11-12)
-Exit: every high and medium finding of the independent review of 0.8.0 fixed, each with a regression test; the rest fixed or planned below with a reason.
-- [x] F-1: `DerefMut` on a boxed root wrote through a read-only pointer; fixed, I-15, Miri test (D-072).
-- [x] F-2: a second define-err in a build: CI check, SECURITY.md supports 0.8.x only, README note (D-076). Yanking 0.7.0 and earlier on crates.io waits for James (public action).
-- [x] F-3: `{:?}` and `render` escape control characters (D-073).
-- [x] F-4 and F-7: public text never from a probe; the accessor and the record agree (D-075).
-- [x] F-5, first part: `report()` checks the filter before building the record (D-074).
-- [x] F-11: README `Code:` line, SECURITY.md versions table and T8 claim (D-077).
+## v0.8.1 - Bug fixes (DONE, 2026-11-12)
+Exit: each bug below fixed with a regression test; the rest fixed or planned below with a reason.
+- [x] `DerefMut` on a boxed root wrote through a read-only pointer; fixed, I-15, Miri test (D-072).
+- [x] A second define-err in a build: CI check, SECURITY.md supports 0.8.x only, README note (D-076). 0.2.0 to 0.7.0 yanked on crates.io on 2026-11-12, James's go (D-085).
+- [x] `{:?}` and `render` escape control characters (D-073).
+- [x] Public text never from a probe; the accessor and the record agree (D-075).
+- [x] `report()` checks the filter before building the record (D-074).
+- [x] README `Code:` line, SECURITY.md versions table and T8 claim (D-077).
 
 ## v0.9.0 - define-err 0.10 (DONE, 2026-11-12)
-Exit: report-err on define-err 0.10, the review findings that release unblocks fixed, and the migration note written (D-078, D-081).
-- [x] define-err 0.10: forged probes refused (review F-7, second part), `links` refuses a second copy (review F-2), `would_deliver` in `report()` (D-074) (D-078).
-- [x] `configure_catalogs` indexes the catalogs with `catalog::Catalog` (binary search) and refuses a duplicate code (review F-5, second part; D-079).
-- [x] Review F-8: `report()` with no reporter returns `false` and marks nothing (D-080).
-- [x] Review F-9 and F-10 documented: `ok_or` keeps a define-err value's code; without `std` a hook must not create an error.
+Exit: report-err on define-err 0.10, the fixes that release unblocks done, and the migration note written (D-078, D-081).
+- [x] define-err 0.10: forged probes refused, `links` refuses a second copy, `would_deliver` in `report()` (D-074) (D-078).
+- [x] `configure_catalogs` indexes the catalogs with `catalog::Catalog` (binary search) and refuses a duplicate code (D-079).
+- [x] `report()` with no reporter returns `false` and marks nothing (D-080).
+- [x] Documented: `ok_or` keeps a define-err value's code; without `std` a hook must not create an error.
 - [x] `docs/MIGRATING.md`: "From report-err 0.8 to 0.9".
 
 ## v0.10.0 - Alpha
 Exit: both migrations green; every surprise fixed or recorded in `docs/MIGRATING.md`.
-- [ ] Remove the `ACCEPTED` entries from `benches/ratios.py` in the first pull request after 0.9.0 (D-082 to D-084); the base then has the change.
-- [ ] kraken migrated for real on a branch James reviews; `kraken-lsp`'s unused anyhow dependency removed. Rehearsed on 2026-11-08 against the 0.7 code: the find-and-replace pass alone, 2,803 tests passed and the same 4 native-linking tests failed as with anyhow.
-- [ ] One more application migrated (a Hive DB tool or WASP boot code) using codes, `ExitReport`, and `report()`: hive-system's `hive-admin`, rehearsed on 2026-11-08 (an `HADM` catalog, `run`, a reporter that logs; exit codes 64, 65, 70, 73 as designed).
-- [ ] The report prints a code's help (`Help:` under `Code:`) when its catalog entry is known; `docs/MIGRATING.md` says to call `configure_catalogs` for it. Found by the `hive-admin` rehearsal.
+- [x] Remove the `ACCEPTED` entries from `benches/ratios.py` in the first pull request after 0.9.0 (D-082 to D-084); the base then has the change.
+- [ ] The compiler migrated for real on a branch James reviews; its language server's unused anyhow dependency removed. Rehearsed on 2026-11-08 against the 0.7 code: the find-and-replace pass alone, 2,803 tests passed and the same 4 native-linking tests failed as with anyhow.
+- [ ] One more application migrated using codes, `ExitReport`, and `report()`: a database admin tool, rehearsed on 2026-11-08 (a catalog of its own, `run`, a reporter that logs; exit codes 64, 65, 70, 73 as designed).
+- [ ] The report prints a code's help (`Help:` under `Code:`) when its catalog entry is known; `docs/MIGRATING.md` says to call `configure_catalogs` for it. Found by that rehearsal.
 - [ ] The `Code:` line names the severity (`warning`), not its number.
-- [ ] Ask define-err for a way to exit 74 (I/O) at normal severity: only `DataLoss` maps to 74 today. Found by the `hive-admin` rehearsal.
+- [ ] Ask define-err for a way to exit 74 (I/O) at normal severity: only `DataLoss` maps to 74 today. Found by that rehearsal.
 - [ ] Decide whether `category` reads an `io::Error` source below a coded wrapper, not only an `io::Error` root.
-- [ ] Review F-5, rest: compute the facts once per record (today five chain walks more than needed). The catalog index is done (D-079). Needs its own benchmark run, since every accessor shares the lookup path.
-- [ ] Review F-6: an installed creation hook turns 1 allocation into 5. Keep hook fields out of the context extension block, in one `String` with offsets. Deferred from 0.8.1 and 0.9.0: it changes `Extras`'s layout, which needs the allocation and size tables re-measured.
+- [ ] Compute the facts once per record (today five chain walks more than needed). The catalog index is done (D-079). Needs its own benchmark run, since every accessor shares the lookup path.
+- [ ] An installed creation hook turns 1 allocation into 5. Keep hook fields out of the context extension block, in one `String` with offsets. Deferred from 0.8.1 and 0.9.0: it changes `Extras`'s layout, which needs the allocation and size tables re-measured.
 
 ## v0.11.0 - Beta and release candidates
 Exit: two weeks without an API change; every document checked against the build; James's review done; the pre-1.0 polish below complete.

@@ -29,7 +29,7 @@
         <strong>MSRV is 1.81+</strong> (Rust 2021 edition). <code>no_std</code> + <code>alloc</code>; <code>std</code> on by default.
     </p>
     <blockquote>
-        <strong>Status: <code>0.9.0</code>, feature complete, measured, hardened, and simplified.</strong> The anyhow surface; error codes, severity, categories, and kinds from define-err; notes, attachments, a propagation trail, and backtraces; <code>ExitReport</code>; several causes and <code>collect_all()</code>; suppressed errors and cleanup; budgets on everything that grows; the panic boundary; the creation hook; and reporting through define-err's facade. <code>0.6</code> measured it against anyhow, eyre, error-stack, and <code>Box&lt;dyn Error&gt;</code> on three platforms (<a href="./docs/PERFORMANCE.md"><code>docs/PERFORMANCE.md</code></a>); <code>0.7</code> hardened it with attack tests for every threat, a day of fuzzing per target, and 8-hour soaks (<a href="./docs/SECURITY.md"><code>docs/SECURITY.md</code></a>); <code>0.8</code> removed the methods that only repeated others and gave two items plainer names (<a href="./docs/MIGRATING.md#from-report-err-07-to-08">the migration note</a>); <code>0.8.1</code> fixed the findings of an independent review, one of them a soundness bug in <code>DerefMut</code> on a boxed root; <code>0.9</code> moved to define-err 0.10, whose identity probe outside text can no longer forge (<a href="./docs/MIGRATING.md#from-report-err-08-to-09">the migration note</a>); next comes the alpha, with kraken migrated (<code>0.10</code>). The whole API is in <a href="./docs/API.md"><code>docs/API.md</code></a>.
+        <strong>Status: <code>0.9.0</code>, feature complete, measured, hardened, and simplified.</strong> The anyhow surface; error codes, severity, categories, and kinds from define-err; notes, attachments, a propagation trail, and backtraces; <code>ExitReport</code>; several causes and <code>collect_all()</code>; suppressed errors and cleanup; budgets on everything that grows; the panic boundary; the creation hook; and reporting through define-err's facade. <code>0.6</code> measured it against anyhow, eyre, error-stack, and <code>Box&lt;dyn Error&gt;</code> on three platforms (<a href="./docs/PERFORMANCE.md"><code>docs/PERFORMANCE.md</code></a>); <code>0.7</code> hardened it with attack tests for every threat, a day of fuzzing per target, and 8-hour soaks (<a href="./docs/SECURITY.md"><code>docs/SECURITY.md</code></a>); <code>0.8</code> removed the methods that only repeated others and gave two items plainer names (<a href="./docs/MIGRATING.md#from-report-err-07-to-08">the migration note</a>); <code>0.8.1</code> fixed a soundness bug in <code>DerefMut</code> on a boxed root and escaped control characters in reports; <code>0.9</code> moved to define-err 0.10, whose identity probe outside text can no longer forge (<a href="./docs/MIGRATING.md#from-report-err-08-to-09">the migration note</a>); next comes the alpha, with two applications migrated (<code>0.10</code>). The whole API is in <a href="./docs/API.md"><code>docs/API.md</code></a>.
     </blockquote>
 </div>
 
@@ -188,7 +188,7 @@ let page = boundary(|| plugin.render(&page)).context("plugin `gallery` failed")?
 
 | What | Version |
 |---|---|
-| The alpha: kraken and one more application migrated | `0.10.0` |
+| The alpha: two applications migrated | `0.10.0` |
 | Beta and release candidates | `0.11.0` |
 
 ## Documentation

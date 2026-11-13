@@ -7,7 +7,6 @@
 # Keep development-only paths out of `git archive` source tarballs. `tests/`
 # stays: `Cargo.toml` names two of its files, and cargo cannot read the
 # manifest without them (D-064).
-/.dev             export-ignore
 /.github          export-ignore
 /docs             export-ignore
 /.gitignore       export-ignore
