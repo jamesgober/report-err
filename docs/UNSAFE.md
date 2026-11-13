@@ -64,7 +64,7 @@ Every `unsafe` block carries a `// SAFETY:` comment naming the invariant it reli
 | Id | Invariant | Test |
 |---|---|---|
 | I-1 | `Header` is the first field of `#[repr(C)] Node<E>`, so the node pointer and the header pointer are the same address; a `const` assertion checks `offset_of!(Node<E>, header) == 0` for every payload wrapper. | compile-time assertion; `test_raw_header_offset_is_zero` |
-| I-2 | A header's vtable was built for exactly the `E` of its node; it is written once in `RawError::new::<E>` and never changed. | review; vtables are `&'static` constants produced only inside `new` |
+| I-2 | A header's vtable was built for exactly the `E` of its node; it is written once in `RawError::new::<E>` and never changed. | by reading the code; vtables are `&'static` constants produced only inside `new` |
 | I-3 | The stored pointer comes from `Box::into_raw` of the whole `Node<E>`, never from a reference to a field, so it carries provenance for the whole allocation. Payload access projects from that pointer to the payload field. | Miri with strict provenance, Stacked Borrows and Tree Borrows |
 | I-4 | The allocation is freed exactly once, with `Box::from_raw` as a `Node<E>` in the vtable's `drop` for the same `E`. | Miri leak and double-free detection; `test_raw_drop_runs_payload_drop_once_and_take_moves_payload` |
 | I-5 | `take` compares the `TypeId`, moves the payload out with `ptr::read`, drops the other header fields, and frees the allocation without dropping the payload again. | `test_raw_drop_runs_payload_drop_once_and_take_moves_payload` with drop counters |

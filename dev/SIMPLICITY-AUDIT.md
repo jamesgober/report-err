@@ -70,7 +70,7 @@ Kept because they look alike but do different things:
 
 ## Shared with define-err
 
-report-err moves from define-err 0.5 to 0.9 in 0.8.0 (D-069). An application that uses both crates (kraken's migration pull request is on define-err 0.9) would otherwise build two copies of `Code`, `Severity`, `Category`, and `Kinds` that do not convert into each other. define-err 0.6 to 0.9.3 changed nothing report-err calls.
+report-err moves from define-err 0.5 to 0.9 in 0.8.0 (D-069). An application that uses both crates (the first migration's pull request is on define-err 0.9) would otherwise build two copies of `Code`, `Severity`, `Category`, and `Kinds` that do not convert into each other. define-err 0.6 to 0.9.3 changed nothing report-err calls.
 
 These define-err items are part of report-err's own public API, so a rename in define-err is a rename in report-err in the same minor:
 
@@ -81,4 +81,4 @@ These define-err items are part of report-err's own public API, so a rename in d
 
 ## Who a break touches
 
-Nobody outside this repository yet: crates.io lists no dependents of report-err, and no crate on the development machine depends on it. The two migration rehearsals (kraken, hive-system's `hive-admin`) use none of the items 0.8.0 removes or renames. The fuzz targets, the soak, the benchmarks, and the tests in this repository are updated in the same change.
+Nobody outside this repository yet: crates.io lists no dependents of report-err, and no crate on the development machine depends on it. The two migration rehearsals use none of the items 0.8.0 removes or renames. The fuzz targets, the soak, the benchmarks, and the tests in this repository are updated in the same change.

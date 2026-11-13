@@ -26,7 +26,7 @@ Moving from anyhow, eyre, or snafu's `Whatever` to report-err. For anyhow it is 
   - [The rules](#the-rules)
   - [A find-and-replace pass](#a-find-and-replace-pass)
   - [What behaves differently](#what-behaves-differently)
-  - [A worked migration: kraken](#a-worked-migration-kraken)
+  - [A worked migration: a compiler](#a-worked-migration-a-compiler)
 - [From eyre and color-eyre](#from-eyre-and-color-eyre)
 - [From snafu's `Whatever`](#from-snafus-whatever)
 - [From report-err 0.7 to 0.8](#from-report-err-07-to-08)
@@ -77,9 +77,9 @@ and in `Cargo.toml`, `anyhow = "..."` becomes `report-err = "0.9"`.
 | exit status from `main` | unchanged (1) unless `ExitReport` is used (`0.4`) | opt-in |
 | MSRV | 1.81 | `core::error::Error` |
 
-### A worked migration: kraken
+### A worked migration: a compiler
 
-kraken (a compiler and language server) was the first migration, tried on 2026-10-29 against report-err `0.3.0` on a copy of its workspace:
+A compiler and language server was the first migration, tried on 2026-10-29 against report-err `0.3.0` on a copy of its workspace:
 
 | Where | Usage | Count | After the pass |
 |---|---|---|---|
@@ -92,7 +92,7 @@ kraken (a compiler and language server) was the first migration, tried on 2026-1
 | `compiler/src/main.rs` | a test helper that walks `err.chain()` and calls `to_string()` | 1 | unchanged |
 | `compiler/src/main.rs` | `#[tokio::main] async fn main() -> Result<()>` | 1 | unchanged |
 
-Result: the pass above changed 2 manifest lines and 36 source lines; no line needed a hand edit. The compiler built, and its test suite gave the same result as with anyhow: 1,974 tests passed under both, and the same 3 tests failed under both (`async_basic_compile_and_run`, `async_await_compile_and_run`, `dyn_dispatch_compile_and_run`, which link a native program and failed with "Linking failed" on the machine used, with anyhow as well). The merge into kraken itself is planned for report-err `0.8`.
+Result: the pass above changed 2 manifest lines and 36 source lines; no line needed a hand edit. The compiler built, and its test suite gave the same result as with anyhow: 1,974 tests passed under both, and the same 3 tests failed under both (`async_basic_compile_and_run`, `async_await_compile_and_run`, `dyn_dispatch_compile_and_run`, which link a native program and failed with "Linking failed" on the machine used, with anyhow as well). The merge into the compiler itself follows with report-err's alpha.
 
 ## From eyre and color-eyre
 
