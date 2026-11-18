@@ -131,7 +131,7 @@ Exit: every item below is fixed, or measured again and listed in the readiness n
   - Every edge case or threat test that a version marked as partial or skipped.
 - [ ] **Fresh performance tuning pass** over every benchmark of `PLAN.md` 11.1 against anyhow, eyre, and error-stack, on Windows, Linux, and aarch64, with criterion baselines refreshed; each regression or missed target fixed or listed.
 - [ ] **Security and `unsafe` review, again**: `src/raw.rs` line by line against `docs/UNSAFE.md` (every `SAFETY:` comment still true, I-1 to I-13 and any later invariant still tested), Miri under both models and AddressSanitizer on the whole suite, fuzzing re-run, and every threat T1 to T16 re-checked against the code as it stands.
-- [ ] The 1.0 readiness note lists every item still open, with its numbers and reason, for James's decision.
+- [ ] The 1.0 readiness note (`dev/READINESS-1.0.md`, started 2026-11-18) lists every item still open, with its numbers and reason, for James's decision; kept current to 1.0.
 
 ## v1.0.0 - Stable
 Exit: the audit passes, the definition of done in `DIRECTIVES.md` and `PLAN.md` section 16 holds, and James approves.
