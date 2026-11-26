@@ -40,7 +40,7 @@
 |---|---|---|
 | `Help:` line under `Code:` when the catalog entry is known | ROADMAP 0.10 | Open; small, report format only. |
 | The `Code:` line names the severity (`warning`), not its number | ROADMAP 0.10 | Open; small, report format only. |
-| Exit 74 (I/O) at normal severity: only `DataLoss` maps to 74 | ROADMAP 0.10 | A request for define-err; report-err follows its answer. |
+| Exit 74 (I/O) at normal severity: only `DataLoss` maps to 74 | ROADMAP 0.10, D-087 | Closed: define-err keeps exit codes a function of the category; the caller picks the code with `with_exit_code`. |
 | `category()` reading an `io::Error` below a coded wrapper, not only an `io::Error` root | ROADMAP 0.10 | Open decision; recommendation: no, the code's category wins, as today. |
 | Facts computed once per record (five chain walks more than needed) | ROADMAP 0.10, D-079 | Open; needs its own benchmark run. |
 | A creation hook turns 1 allocation into 5 | ROADMAP 0.10 | Open; changes `Extras`'s layout, so the allocation and size tables are measured again. |
