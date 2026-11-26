@@ -98,7 +98,7 @@ Exit: both migrations green; every surprise fixed or recorded in `docs/MIGRATING
 - [ ] One more application migrated using codes, `ExitReport`, and `report()`: a database admin tool, rehearsed on 2026-11-08 (a catalog of its own, `run`, a reporter that logs; exit codes 64, 65, 70, 73 as designed).
 - [ ] The report prints a code's help (`Help:` under `Code:`) when its catalog entry is known; `docs/MIGRATING.md` says to call `configure_catalogs` for it. Found by that rehearsal.
 - [ ] The `Code:` line names the severity (`warning`), not its number.
-- [ ] Ask define-err for a way to exit 74 (I/O) at normal severity: only `DataLoss` maps to 74 today. Found by that rehearsal.
+- [x] Exit 74 (I/O) at normal severity: define-err keeps exit codes a function of the category (only `DataLoss` is 74), and the caller picks the code with `with_exit_code`, which `exit_code()` already reads first (D-087).
 - [ ] Decide whether `category` reads an `io::Error` source below a coded wrapper, not only an `io::Error` root.
 - [ ] Compute the facts once per record (today five chain walks more than needed). The catalog index is done (D-079). Needs its own benchmark run, since every accessor shares the lookup path.
 - [ ] An installed creation hook turns 1 allocation into 5. Keep hook fields out of the context extension block, in one `String` with offsets. Deferred from 0.8.1 and 0.9.0: it changes `Extras`'s layout, which needs the allocation and size tables re-measured.
